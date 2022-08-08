@@ -1,4 +1,1 @@
-// Under construction!!
-
-pub trait Config {
-}
+// Under construction!

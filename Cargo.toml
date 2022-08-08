@@ -7,4 +7,23 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1", features = ["rt", "net", "sync", "macros", "time"]}
+serde = "1"
+fnv = "1"
+bincode = "1"
+async-trait = "0.1"
+simple_logger = "2"
+log = "0"
+tracing = "0.1"
+derive_builder = "0"
+bytes = "1"
+tokio-stream = "0"
+futures = "0"
+rand = { version = "0.7", features = ["small_rng"] }
+
+[dependencies.tokio-util]
+version = "0"
+features = ["codec", "compat"]
+
+[dependencies.tokio]
+features = ["net", "rt", "sync", "macros", "time"]
+version = "1"
