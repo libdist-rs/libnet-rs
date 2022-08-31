@@ -1,11 +1,11 @@
 mod traits;
 pub use traits::*;
 
-mod error;
-pub use error::*;
-
 mod codec;
 pub use codec::*;
+
+mod error;
+pub use error::*;
 
 pub type NetResult<T> = anyhow::Result<T>;
 

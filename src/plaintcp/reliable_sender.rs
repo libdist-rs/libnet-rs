@@ -284,7 +284,7 @@ where
                     Err(e) => {
                         // We failed to send the message, we put it back into the buffer.
                         self.buffer.push_front((data, handler));
-                        break 'connection NetError::Generic(format!("Failed to send message to {} with error {}", self.address, e));
+                        break 'connection NetError::SendingFailed(self.address, e);
                     }
                 }
             }
@@ -297,7 +297,7 @@ where
                 response = reader.next() => {
                     let (data, handler) = match pending_replies.pop_front() {
                         Some(message) => message,
-                        None => break 'connection NetError::Generic(format!("Unexpected ack from {}", self.address)),
+                        None => break 'connection NetError::UnexpectedAck(self.address),
                     };
                     match response {
                         Some(Ok(msg)) => {
@@ -308,7 +308,7 @@ where
                             // Something has gone wrong (either the channel dropped or we failed to read from it).
                             // Put the message back in the buffer, we will try to send it again.
                             pending_replies.push_front((data, handler));
-                            break 'connection NetError::Generic(format!("Failed to receive ack from {}", self.address));
+                            break 'connection NetError::NoAck(self.address);
                         }
                     }
                 },

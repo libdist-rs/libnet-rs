@@ -17,6 +17,7 @@ tokio-stream = "0"
 futures = "0"
 rand = { version = "0.7", features = ["small_rng"] }
 anyhow = "1"
+thiserror = "1"
 
 [dependencies.tokio-util]
 version = "0"
