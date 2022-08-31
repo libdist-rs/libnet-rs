@@ -1,18 +1,20 @@
 use std::{net::SocketAddr, marker::PhantomData, collections::VecDeque, time::Duration, cmp::min};
+use async_trait::async_trait;
 use fnv::FnvHashMap;
 use futures::SinkExt;
-use rand::{rngs::SmallRng, SeedableRng};
-use tokio::{sync::{oneshot, mpsc::{UnboundedSender, unbounded_channel, UnboundedReceiver}}, net::TcpStream, time::{sleep, Sleep}};
+use rand::{rngs::SmallRng, SeedableRng, seq::SliceRandom};
+use tokio::{sync::{oneshot, mpsc::{UnboundedSender, unbounded_channel, UnboundedReceiver}}, net::TcpStream, time::sleep};
 use tokio_stream::StreamExt;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use crate::{Message, NetError, Decodec, EnCodec};
+use crate::{Message, NetError, Decodec, EnCodec, Identifier, NetSender};
 
 /// This handler returns the message that the protocol was trying to send after failing several times
 /// If successful, the received ack will be echoed here
 /// Otherwise, the handler will be dropped, which can be handled to re-initiate the sending by the upstream protocol
 pub type CancelHandler<Msg> = oneshot::Receiver<Msg>;
 
+/// A convenient data structure for message passing between connections and the sender
 #[derive(Debug)]
 struct InnerMsg<SendMsg, RecvMsg> 
 {
@@ -33,6 +35,7 @@ impl<Id, SendMsg, RecvMsg> TcpReliableSender<Id, SendMsg, RecvMsg>
 where
     SendMsg: Message,
     RecvMsg: Message,
+    Id: Identifier,
 {
     pub fn new() -> Self {
         Self { 
@@ -46,10 +49,112 @@ where
     fn spawn_connection(address: SocketAddr) -> UnboundedSender<InnerMsg<SendMsg, RecvMsg>>
     {
         let (tx, rx) = unbounded_channel();
-        tokio::spawn(async move {
-            Connection::<SendMsg, RecvMsg>::spawn(address, rx);
-        });
+        Connection::<SendMsg, RecvMsg>::spawn(address, rx);
         tx
+    }
+
+    /// Reliably send a message to a specific address.
+    pub async fn send(&mut self, recipient: Id, data: SendMsg) -> CancelHandler<RecvMsg> 
+    {
+        let (tx, rx) = oneshot::channel();
+        let addr = self.address_map
+            .get(&recipient)
+            .expect(format!("Requested to send a reliable message to {:?}, but address not found", recipient).as_str())
+            .clone();
+        self.connections.entry(recipient)
+            .or_insert_with(|| Self::spawn_connection(addr))
+            .send(InnerMsg { payload: data, cancel_handler: tx })
+            .expect("Failed to send");
+        rx
+    }
+
+    pub async fn broadcast(&mut self, recipients: &[Id], msg: SendMsg) -> Vec<CancelHandler<RecvMsg>>
+    {
+        let mut handlers = Vec::with_capacity(recipients.len());
+        for recipient in recipients {
+            let handler = self.send(recipient.clone(), msg.clone()).await;
+            handlers.push(handler);
+        }
+        handlers
+    }
+
+    /// Pick a few addresses at random (specified by `nodes`) and send the message only to them.
+    /// It returns a vector of cancel handlers with no specific order.
+    pub async fn randcast(
+        &mut self,
+        mut recipients: Vec<Id>,
+        data: SendMsg,
+        num_nodes: usize,
+    ) -> Vec<CancelHandler<RecvMsg>> {
+        recipients.shuffle(&mut self.rng);
+        recipients.truncate(num_nodes);
+        self.broadcast(recipients.as_ref(), data).await
+    }
+}
+
+#[async_trait]
+impl<Id, SendMsg, RecvMsg> NetSender<Id, SendMsg> for TcpReliableSender<Id, SendMsg, RecvMsg>
+where
+    SendMsg: Message,
+    RecvMsg: Message,
+    Id: Identifier,
+{
+    async fn send(&mut self, recipient: Id, msg: SendMsg) {
+        let _ = self.send(recipient, msg).await;
+    }
+
+    fn blocking_send(&mut self, recipient: Id, msg: SendMsg) {
+        let (tx, rx) = oneshot::channel();
+        let addr = self.address_map
+            .get(&recipient)
+            .expect(format!("Requested to send a reliable message to {:?}, but address not found", recipient).as_str())
+            .clone();
+        self.connections.entry(recipient)
+            .or_insert_with(|| Self::spawn_connection(addr))
+            .send(InnerMsg { payload: msg, cancel_handler: tx })
+            .expect("Failed to send");
+        // Wait for a response
+        let _ = rx.blocking_recv();
+    }
+
+    async fn broadcast(&mut self, msg: SendMsg, recipients: &[Id]) {
+        let _ = self.broadcast(recipients, msg).await;
+    }
+
+    fn blocking_broadcast(&mut self, msg: SendMsg, recipients: &[Id]) {
+        // for recipient in recipients {
+        //     let handler = self.blocking_send(recipient.clone(), msg.clone());
+        //     handlers.push(handler);
+        // }
+
+        let mut handlers = Vec::with_capacity(recipients.len());
+        for recipient in recipients {
+            let (tx, rx) = oneshot::channel();
+            let addr = self.address_map
+                .get(&recipient)
+                .expect(format!("Requested to send a reliable message to {:?}, but address not found", recipient).as_str())
+                .clone();
+            self.connections.entry(recipient.clone())
+                .or_insert_with(|| Self::spawn_connection(addr))
+                .send(InnerMsg { payload: msg.clone(), cancel_handler: tx })
+                .expect("Failed to send");
+            handlers.push(rx);
+        }
+        for handler in handlers {
+            let _ = handler.blocking_recv();
+        }
+    }
+
+    async fn randcast(&mut self, msg: SendMsg, mut peers: Vec<Id>, subset_size: usize) {
+        peers.shuffle(&mut self.rng);
+        peers.truncate(subset_size);
+        self.broadcast(peers.as_ref(), msg).await;
+    }
+
+    fn blocking_randcast(&mut self, msg: SendMsg, mut peers: Vec<Id>, subset_size: usize) {
+        peers.shuffle(&mut self.rng);
+        peers.truncate(subset_size);
+        self.blocking_broadcast(msg, peers.as_ref());
     }
 }
 

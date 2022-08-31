@@ -5,7 +5,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::{Message, Handler, Decodec, EnCodec, Writer};
 
-struct TcpReceiver<SendMsg, RecvMsg, MsgHandler>
+pub struct TcpReceiver<SendMsg, RecvMsg, MsgHandler>
 where
     SendMsg: Message,
     RecvMsg: Message,

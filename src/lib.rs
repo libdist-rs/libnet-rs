@@ -7,8 +7,11 @@ pub use error::*;
 mod codec;
 pub use codec::*;
 
-pub type NetResult<T> = std::result::Result<T, NetError>;
+pub type NetResult<T> = anyhow::Result<T>;
 
-mod plaintcp;
-mod udp;
-mod tls;
+#[cfg(feature = "tcp")]
+pub mod plaintcp;
+#[cfg(feature = "udp")]
+pub mod udp;
+#[cfg(feature = "tls")]
+pub mod tls;

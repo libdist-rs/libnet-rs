@@ -90,7 +90,7 @@ where
                 // The outside world asked me to send a message
                 Some(msg) = self.receiver.recv() => {
                     if let Err(e) = writer.send(msg).await {
-                        log::warn!("Unable to send any message outside the system");
+                        log::warn!("Unable to send any message outside the system with error: {}", e.to_string());
                         return;
                     }
                 },
