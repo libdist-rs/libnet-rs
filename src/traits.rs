@@ -48,7 +48,7 @@ where
     fn blocking_randcast(&mut self, msg: SendMsg, peers: Vec<PeerId>, subset_size: usize);
 }
 
-pub type Writer<SendMsg> = Box<dyn Sink<SendMsg, Error=std::io::Error> + Send>;
+pub type Writer<SendMsg> = Box<dyn Sink<SendMsg, Error=std::io::Error> + Send + Unpin>;
 
 pub trait Handler<SendMsg, RecvMsg>:
     Send + 

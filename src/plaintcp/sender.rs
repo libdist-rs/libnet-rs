@@ -23,8 +23,19 @@ impl<Id, SendMsg, RecvMsg> TcpSimpleSender<Id, SendMsg, RecvMsg>
 where
     SendMsg: Message,
     RecvMsg: Message,
+    Id: Identifier,
 {
-    pub fn new() -> Self {
+    pub fn with_peers(peers: FnvHashMap<Id, SocketAddr>) -> Self
+    {
+        let mut sender = Self::new();
+        for (id, peer) in peers {
+            sender.address_map
+                .insert(id, peer);
+        }
+        sender
+    }
+
+    fn new() -> Self {
         Self { 
             address_map: FnvHashMap::default(),
             connections: FnvHashMap::default(),
