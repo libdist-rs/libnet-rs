@@ -51,7 +51,7 @@ where
             while let Some(msg) = reader.next().await {
                 match msg {
                     Ok(new_msg) => {
-                        handler.dispatch(new_msg, &mut writer);
+                        handler.dispatch(new_msg, &mut writer).await;
                     },
                     Err(e) => {
                         log::warn!("Connection error for Peer {}: {}", peer_address, e);

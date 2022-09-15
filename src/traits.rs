@@ -57,6 +57,7 @@ where
 
 pub type Writer<SendMsg> = Box<dyn Sink<SendMsg, Error=std::io::Error> + Send + Unpin>;
 
+#[async_trait]
 pub trait Handler<SendMsg, RecvMsg>:
     Send + 
     Sync +
@@ -68,7 +69,7 @@ where
 {
     /// The handler reacts to messages
     /// Needs to be implemented by the protocol
-    fn dispatch(&self, msg: RecvMsg, writer: &mut Writer<SendMsg>);
+    async fn dispatch(&self, msg: RecvMsg, writer: &mut Writer<SendMsg>);
 }
 
 pub trait Identifier: 

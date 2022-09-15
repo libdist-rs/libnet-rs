@@ -1,5 +1,6 @@
 use std::{net::SocketAddr, time::Duration};
 
+use async_trait::async_trait;
 use bytes::Bytes;
 use futures::SinkExt;
 use tokio::{sync::mpsc::{UnboundedSender, unbounded_channel}, time::sleep, net::TcpStream};
@@ -27,8 +28,9 @@ impl Message for String {
     }
 }
 
+#[async_trait]
 impl Handler<SendMsg, RecvMsg> for TestHandler {
-    fn dispatch(&self, message: RecvMsg, writer: &mut Writer<SendMsg>) 
+    async fn dispatch(&self, message: RecvMsg, writer: &mut Writer<SendMsg>) 
     {
         let response = "Ack".to_string();
         // Reply with an ACK.
