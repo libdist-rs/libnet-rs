@@ -12,10 +12,17 @@ pub trait Message:
     'static
 {
     /// How to decode from bytes
-    fn from_bytes(data: &[u8]) -> Self;
+    /// Default implementation uses bincode
+    fn from_bytes(data: &[u8]) -> Self {
+        bincode::deserialize(data)
+            .expect("Deserialization failed")
+    }
 
     // How to encode self to bytes
-    fn to_bytes(&self) -> Vec<u8>;
+    fn to_bytes(&self) -> Vec<u8> {
+        bincode::serialize(self)
+            .expect("Serialization failed")
+    }
 }
 
 #[async_trait]
