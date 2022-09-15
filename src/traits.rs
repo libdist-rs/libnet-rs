@@ -73,12 +73,8 @@ where
 }
 
 pub trait Identifier: 
-    std::fmt::Debug + 
+    Message + 
     std::cmp::Eq + 
     std::cmp::PartialOrd +
-    std::hash::Hash + 
-    std::clone::Clone + 
-    Send + 
-    Sync + 
-    'static
+    std::hash::Hash
 {}
