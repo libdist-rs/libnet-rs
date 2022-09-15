@@ -34,6 +34,11 @@ where
         }
         sender
     }
+    /// Returns the (Id, Address) used in this sender
+    pub fn get_peers(&self) -> FnvHashMap<Id, SocketAddr> {
+        self.address_map.clone()
+    }
+
 
     fn new() -> Self {
         Self { 

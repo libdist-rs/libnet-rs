@@ -56,6 +56,11 @@ where
         sender
     }
 
+    /// Returns the (Id, Address) used in this sender
+    pub fn get_peers(&self) -> FnvHashMap<Id, SocketAddr> {
+        self.address_map.clone()
+    }
+
     fn spawn_connection(address: SocketAddr) -> UnboundedSender<InnerMsg<SendMsg>>
     {
         let (tx, rx) = unbounded_channel();
