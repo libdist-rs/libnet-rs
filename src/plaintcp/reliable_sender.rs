@@ -71,6 +71,7 @@ where
     /// Reliably send a message to a specific address.
     pub async fn send(&mut self, recipient: Id, data: SendMsg) -> CancelHandler
     {
+        log::debug!("Async Sending {:?} to {:?}", data, recipient);
         let (tx, rx) = oneshot::channel();
         let addr = self.address_map
             .get(&recipient)
@@ -119,6 +120,7 @@ where
     }
 
     fn blocking_send(&mut self, recipient: Id, msg: SendMsg) {
+        log::debug!("Blocking Sending {:?} to {:?}", msg, recipient);
         let (tx, rx) = oneshot::channel();
         let addr = self.address_map
             .get(&recipient)
