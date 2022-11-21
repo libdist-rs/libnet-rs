@@ -135,6 +135,7 @@ where
     RecvMsg: Message,
 {
     async fn send(&mut self, sender: Id, msg: SendMsg) {
+        log::debug!("Async Sending {:?} to {:?}", msg, sender);
         let addr_opt = self.address_map.get(&sender);
         if let None = addr_opt {
             log::warn!("Unknown peer {:?}", sender);
@@ -164,6 +165,7 @@ where
     }
 
     fn blocking_send(&mut self, sender:Id, msg: SendMsg) {
+        log::debug!("Blocking Sending {:?} to {:?}", msg, sender);
         let addr_opt = self.address_map.get(&sender);
         if let None = addr_opt {
             log::warn!("Unknown peer {:?}", sender);
