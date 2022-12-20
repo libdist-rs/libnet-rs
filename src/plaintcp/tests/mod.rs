@@ -32,5 +32,4 @@ where
 }
 
 pub type PeerId = usize;
-impl Message for PeerId {}
 impl Identifier for PeerId {}

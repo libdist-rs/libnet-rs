@@ -6,7 +6,7 @@ use futures::SinkExt;
 use tokio::{sync::mpsc::{UnboundedSender, unbounded_channel}, time::sleep, net::TcpStream};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-use crate::{Handler, Writer, Message, plaintcp::TcpReceiver};
+use crate::{Handler, Writer, plaintcp::TcpReceiver};
 
 #[derive(Clone)]
 struct TestHandler {
@@ -15,18 +15,6 @@ struct TestHandler {
 
 pub type SendMsg = String;
 pub type RecvMsg = String;
-
-impl Message for String {
-    fn from_bytes(data: &[u8]) -> Self {
-        bincode::deserialize(data)
-            .expect("Failed to deserialize a string")
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        bincode::serialize(self)
-            .expect("Failed to serialize string")
-    }
-}
 
 #[async_trait]
 impl Handler<SendMsg, RecvMsg> for TestHandler {

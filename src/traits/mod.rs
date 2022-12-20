@@ -2,6 +2,9 @@ use async_trait::async_trait;
 use futures::Sink;
 use serde::{Serialize, de::DeserializeOwned};
 
+mod impl_msg;
+pub use impl_msg::*;
+
 pub trait Message: 
     Clone + 
     std::fmt::Debug + 
