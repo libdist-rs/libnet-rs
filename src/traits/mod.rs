@@ -81,3 +81,11 @@ pub trait Identifier:
     std::cmp::PartialOrd +
     std::hash::Hash
 {}
+
+impl<T> Identifier for T 
+where 
+    T: Message + 
+    std::cmp::Eq + 
+    std::cmp::PartialOrd +
+    std::hash::Hash
+{}
