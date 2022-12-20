@@ -7,25 +7,25 @@ use tokio::{sync::{oneshot, mpsc::{UnboundedSender, unbounded_channel, Unbounded
 use tokio_stream::StreamExt;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use crate::{Message, NetError, Decodec, EnCodec, Identifier, NetSender, Acknowledgement};
+use crate::{Message, NetError, Decodec, EnCodec, Identifier, NetSender};
 
 /// This handler returns the message that the protocol was trying to send after failing several times
 /// If successful, the received ack will be echoed here
 /// Otherwise, the handler will be dropped, which can be handled to re-initiate the sending by the upstream protocol
-pub type CancelHandler = oneshot::Receiver<Acknowledgement>;
+pub type CancelHandler<RecvMsg> = oneshot::Receiver<RecvMsg>;
 
 /// A convenient data structure for message passing between connections and the sender
 #[derive(Debug)]
-struct InnerMsg<SendMsg> 
+struct InnerMsg<SendMsg, RecvMsg> 
 {
     payload: SendMsg,
-    cancel_handler: oneshot::Sender<Acknowledgement>,
+    cancel_handler: oneshot::Sender<RecvMsg>,
 }
 
 pub struct TcpReliableSender<Id, SendMsg, RecvMsg>
 {
     address_map: FnvHashMap<Id, SocketAddr>,
-    connections: FnvHashMap<Id, UnboundedSender<InnerMsg<SendMsg>>>,
+    connections: FnvHashMap<Id, UnboundedSender<InnerMsg<SendMsg, RecvMsg>>>,
     _x: PhantomData<RecvMsg>,
     /// Small RNG just used to shuffle nodes and randomize connections (not crypto related).
     rng: SmallRng,        
@@ -61,7 +61,7 @@ where
         self.address_map.clone()
     }
 
-    fn spawn_connection(address: SocketAddr) -> UnboundedSender<InnerMsg<SendMsg>>
+    fn spawn_connection(address: SocketAddr) -> UnboundedSender<InnerMsg<SendMsg, RecvMsg>>
     {
         let (tx, rx) = unbounded_channel();
         Connection::<SendMsg, RecvMsg>::spawn(address, rx);
@@ -69,22 +69,24 @@ where
     }
 
     /// Reliably send a message to a specific address.
-    pub async fn send(&mut self, recipient: Id, data: SendMsg) -> CancelHandler
+    pub async fn send(&mut self, recipient: Id, data: SendMsg) -> CancelHandler<RecvMsg>
     {
         log::debug!("Async Sending {:?} to {:?}", data, recipient);
         let (tx, rx) = oneshot::channel();
-        let addr = self.address_map
+        let addr = *self.address_map
             .get(&recipient)
-            .expect(format!("Requested to send a reliable message to {:?}, but address not found", recipient).as_str())
-            .clone();
-        self.connections.entry(recipient)
+            .unwrap_or_else(|| 
+                panic!("Requested to send a reliable message to {:?}, but address not found", recipient)
+            );
+        self.connections
+            .entry(recipient)
             .or_insert_with(|| Self::spawn_connection(addr))
             .send(InnerMsg { payload: data, cancel_handler: tx })
             .expect("Failed to send");
         rx
     }
 
-    pub async fn broadcast(&mut self, recipients: &[Id], msg: SendMsg) -> Vec<CancelHandler>
+    pub async fn broadcast(&mut self, recipients: &[Id], msg: SendMsg) -> Vec<CancelHandler<RecvMsg>>
     {
         let mut handlers = Vec::with_capacity(recipients.len());
         for recipient in recipients {
@@ -101,7 +103,7 @@ where
         mut recipients: Vec<Id>,
         data: SendMsg,
         num_nodes: usize,
-    ) -> Vec<CancelHandler> {
+    ) -> Vec<CancelHandler<RecvMsg>> {
         recipients.shuffle(&mut self.rng);
         recipients.truncate(num_nodes);
         self.broadcast(recipients.as_ref(), data).await
@@ -122,11 +124,13 @@ where
     fn blocking_send(&mut self, recipient: Id, msg: SendMsg) {
         log::debug!("Blocking Sending {:?} to {:?}", msg, recipient);
         let (tx, rx) = oneshot::channel();
-        let addr = self.address_map
+        let addr = *self.address_map
             .get(&recipient)
-            .expect(format!("Requested to send a reliable message to {:?}, but address not found", recipient).as_str())
-            .clone();
-        self.connections.entry(recipient)
+            .unwrap_or_else(|| 
+                panic!("Requested to send a reliable message to {:?}, but address not found", recipient)
+            );
+        self.connections
+            .entry(recipient)
             .or_insert_with(|| Self::spawn_connection(addr))
             .send(InnerMsg { payload: msg, cancel_handler: tx })
             .expect("Failed to send");
@@ -147,11 +151,13 @@ where
         let mut handlers = Vec::with_capacity(recipients.len());
         for recipient in recipients {
             let (tx, rx) = oneshot::channel();
-            let addr = self.address_map
-                .get(&recipient)
-                .expect(format!("Requested to send a reliable message to {:?}, but address not found", recipient).as_str())
-                .clone();
-            self.connections.entry(recipient.clone())
+            let addr = *self.address_map
+                .get(recipient)
+                .unwrap_or_else(|| 
+                    panic!("Requested to send a reliable message to {:?}, but address not found", recipient)
+                );
+            self.connections
+                .entry(recipient.clone())
                 .or_insert_with(|| Self::spawn_connection(addr))
                 .send(InnerMsg { payload: msg.clone(), cancel_handler: tx })
                 .expect("Failed to send");
@@ -180,12 +186,11 @@ struct Connection<SendMsg, RecvMsg>
     /// The destination address.
     address: SocketAddr,
     /// Channel from which the connection receives its commands.
-    receiver: UnboundedReceiver<InnerMsg<SendMsg>>,
+    receiver: UnboundedReceiver<InnerMsg<SendMsg, RecvMsg>>,
     /// The initial delay to wait before re-attempting a connection (in ms).
     retry_delay: std::time::Duration,
     /// Buffer keeping all messages that need to be re-transmitted.
-    buffer: VecDeque<(SendMsg, oneshot::Sender<Acknowledgement>)>,
-    _x: PhantomData<RecvMsg>,
+    buffer: VecDeque<(SendMsg, oneshot::Sender<RecvMsg>)>,
 }
 
 impl<SendMsg, RecvMsg> Connection<SendMsg, RecvMsg>
@@ -224,7 +229,7 @@ where
     SendMsg: Message,
     RecvMsg: Message,
 {
-    fn spawn(address: SocketAddr, receiver: UnboundedReceiver<InnerMsg<SendMsg>>)
+    fn spawn(address: SocketAddr, receiver: UnboundedReceiver<InnerMsg<SendMsg, RecvMsg>>)
     {
         tokio::spawn(async move {
             Self {
@@ -232,7 +237,6 @@ where
                 receiver,
                 retry_delay: Self::RETRY_INITIAL,
                 buffer: VecDeque::default(),
-                _x: PhantomData,
             }.run()
             .await;
         });
@@ -252,7 +256,11 @@ where
                     log::warn!("Keep alive error for {}: {}", self.address, error);
                 },
                 Err(e) => {
-                    log::warn!("Failed to connect {} (Attempt: {}) with error {}", self.address, waiter.attempt(), e);
+                    log::warn!(
+                        "Failed to connect {} (Attempt: {}) with error {}", self.address, 
+                        waiter.attempt(), 
+                        e
+                    );
                     let timer = sleep(waiter.current);
                     tokio::pin!(timer);
 
@@ -273,12 +281,12 @@ where
     async fn keep_alive(&mut self, mut stream: TcpStream) -> NetError {
         // This buffer keeps all messages and handlers that we have successfully transmitted but for
         // which we are still waiting to receive an ACK.
-        let mut pending_replies : VecDeque<(SendMsg, oneshot::Sender<Acknowledgement>)>= VecDeque::new();
+        let mut pending_replies : VecDeque<(SendMsg, oneshot::Sender<RecvMsg>)>= VecDeque::new();
         'connection: loop {
             let (rd, wr) = stream.split();
             let mut reader = FramedRead::new(
                 rd, 
-                Decodec::<Acknowledgement>::new()
+                Decodec::<RecvMsg>::new()
             );
             let mut writer = FramedWrite::new(
                 wr, 

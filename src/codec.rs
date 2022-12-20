@@ -11,6 +11,12 @@ impl<O> Decodec<O> {
     }
 }
 
+impl<O> Default for Decodec<O> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<Msg> Decoder for Decodec<Msg> 
 where 
     Msg: Message,
@@ -37,6 +43,12 @@ impl<I> EnCodec<I> {
     }
 }
 
+impl<I> Default for EnCodec<I> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<I> std::clone::Clone for EnCodec<I> {
     fn clone(&self) -> Self {
         EnCodec::new()
@@ -51,6 +63,6 @@ where I:Message,
     fn encode(&mut self, item: I, dst:&mut BytesMut) -> Result<(),Self::Error> {
         let data = I::to_bytes(&item);
         let buf = Bytes::from(data);
-        return self.0.encode(buf, dst);
+        self.0.encode(buf, dst)
     }
 }

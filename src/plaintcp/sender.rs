@@ -137,7 +137,7 @@ where
     async fn send(&mut self, sender: Id, msg: SendMsg) {
         log::debug!("Async Sending {:?} to {:?}", msg, sender);
         let addr_opt = self.address_map.get(&sender);
-        if let None = addr_opt {
+        if addr_opt.is_none() {
             log::warn!("Unknown peer {:?}", sender);
             return;
         }
@@ -156,7 +156,7 @@ where
             // If not ok, continue with a fresh connection
         }
 
-        let conn = Self::spawn_connection(address.clone());
+        let conn = Self::spawn_connection(*address);
         if conn.send(msg).is_ok() {
             self.connections
                 .insert(sender, conn);
@@ -167,7 +167,7 @@ where
     fn blocking_send(&mut self, sender:Id, msg: SendMsg) {
         log::debug!("Blocking Sending {:?} to {:?}", msg, sender);
         let addr_opt = self.address_map.get(&sender);
-        if let None = addr_opt {
+        if addr_opt.is_none() {
             log::warn!("Unknown peer {:?}", sender);
             return;
         }
@@ -185,11 +185,10 @@ where
                 .remove(&sender);
         }
 
-        let conn = Self::spawn_connection(address.clone());
+        let conn = Self::spawn_connection(*address);
         if conn.send(msg).is_ok() {
             self.connections
                 .insert(sender, conn);
-            return;
         }
     }
 
