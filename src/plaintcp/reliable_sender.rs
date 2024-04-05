@@ -118,7 +118,7 @@ where
     Id: Identifier,
 {
     async fn send(&mut self, recipient: Id, msg: SendMsg) {
-        let _ = self.send(recipient, msg).await;
+        let _handler = self.send(recipient, msg).await;
     }
 
     fn blocking_send(&mut self, recipient: Id, msg: SendMsg) {
@@ -264,15 +264,9 @@ where
                     let timer = sleep(waiter.current);
                     tokio::pin!(timer);
 
-                    'waiting: loop {
-                        tokio::select! {
-                            // Wait an increasing delay before attempting to reconnect.
-                            () = &mut timer => {
-                                waiter.new_attempt();
-                                break 'waiting;
-                            },
-                        }
-                    }
+                    // Wait an increasing delay before attempting to reconnect.
+                    timer.await;
+                    waiter.new_attempt();
                 }
             }
         }
