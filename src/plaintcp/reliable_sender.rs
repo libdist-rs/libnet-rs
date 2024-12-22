@@ -248,7 +248,7 @@ where
 
     async fn run(&mut self) 
     {
-        log::debug!("Running Connection Loop for {}", address);
+        log::debug!("Running Connection Loop for {}", self.address);
         let mut waiter = Waiter::new(self.retry_delay);
         loop {
             match TcpStream::connect(self.address).await {
