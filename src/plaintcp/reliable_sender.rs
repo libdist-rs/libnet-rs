@@ -79,11 +79,14 @@ where
             .unwrap_or_else(|| 
                 panic!("Requested to send a reliable message to {:?}, but address not found", recipient)
             );
-        self.connections
+        if let Err(e) = self.connections
             .entry(recipient)
             .or_insert_with(|| Self::spawn_connection(addr))
-            .send(InnerMsg { payload: data, cancel_handler: tx })
-            .expect("Failed to send");
+            .send(InnerMsg { payload: data, cancel_handler: tx }) {
+            log::error!("Net Send Error: {}", e);
+            panic!("Send error");
+        }
+            
         rx
     }
 
