@@ -63,6 +63,7 @@ where
 
     fn spawn_connection(address: SocketAddr) -> UnboundedSender<InnerMsg<SendMsg, RecvMsg>>
     {
+        log::debug!("Spawning a new connection for {}", address);
         let (tx, rx) = unbounded_channel();
         Connection::<SendMsg, RecvMsg>::spawn(address, rx);
         tx
