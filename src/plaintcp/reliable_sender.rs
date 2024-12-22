@@ -237,6 +237,7 @@ where
     {
         log::debug!("Connection spawning: {}", address);
         tokio::spawn(async move {
+            log::debug!("Starting connection job: {}", address);
             Self {
                 address,
                 receiver,
