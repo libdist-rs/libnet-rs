@@ -235,6 +235,7 @@ where
 {
     fn spawn(address: SocketAddr, receiver: UnboundedReceiver<InnerMsg<SendMsg, RecvMsg>>)
     {
+        log::debug!("Connection spawning: {}", address);
         tokio::spawn(async move {
             Self {
                 address,
