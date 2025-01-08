@@ -1,0 +1,21 @@
+[package]
+name = "tcp-receiver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = { workspace = true }
+log = { workspace = true }
+futures = { workspace = true }
+tokio-util = { workspace = true }
+thiserror = { workspace = true }
+common = { version = "0.1.0", path = "../common" }
+
+[dependencies.tokio]
+version = "1"
+features = ["net", "sync", "macros", "rt"]
+
+
+[features]
+default = ["ack"]
+ack = ["common/ack"]

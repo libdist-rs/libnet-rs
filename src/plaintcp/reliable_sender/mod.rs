@@ -1,40 +1,37 @@
 use std::{net::SocketAddr, marker::PhantomData, collections::VecDeque, time::Duration, cmp::min};
-use async_trait::async_trait;
+use bytes::Bytes;
 use fnv::FnvHashMap;
-use futures::SinkExt;
-use rand::{rngs::SmallRng, SeedableRng, seq::SliceRandom};
+use futures::{SinkExt, StreamExt};
 use tokio::{sync::{oneshot, mpsc::{UnboundedSender, unbounded_channel, UnboundedReceiver}}, net::TcpStream, time::sleep};
-use tokio_stream::StreamExt;
-use tokio_util::codec::{FramedRead, FramedWrite};
+use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-use crate::{Message, NetError, Decodec, EnCodec, Identifier, NetSender};
+use crate::{NetError, Identifier};
 
 /// This handler returns the message that the protocol was trying to send after failing several times
 /// If successful, the received ack will be echoed here
 /// Otherwise, the handler will be dropped, which can be handled to re-initiate the sending by the upstream protocol
-pub type CancelHandler<RecvMsg> = oneshot::Receiver<RecvMsg>;
+pub type CancelHandler = oneshot::Receiver<Bytes>;
 
 /// A convenient data structure for message passing between connections and the sender
 #[derive(Debug)]
-struct InnerMsg<SendMsg, RecvMsg> 
+struct InnerMsg 
 {
-    payload: SendMsg,
-    cancel_handler: oneshot::Sender<RecvMsg>,
+    payload: Bytes,
+    cancel_handler: oneshot::Sender<Bytes>,
 }
 
-pub struct TcpReliableSender<Id, SendMsg, RecvMsg>
+pub struct TcpReliableSender<Id, SendMsg>
 {
     address_map: FnvHashMap<Id, SocketAddr>,
-    connections: FnvHashMap<Id, UnboundedSender<InnerMsg<SendMsg, RecvMsg>>>,
-    _x: PhantomData<RecvMsg>,
-    /// Small RNG just used to shuffle nodes and randomize connections (not crypto related).
-    rng: SmallRng,        
+    connections: FnvHashMap<Id, UnboundedSender<InnerMsg>>,
+    _x: PhantomData<SendMsg>,
 }
 
-impl<Id, SendMsg, RecvMsg> TcpReliableSender<Id, SendMsg, RecvMsg>
+unsafe impl<Id, T> Send for TcpReliableSender<Id, T> where Id: Send {}
+unsafe impl<Id, T> Sync for TcpReliableSender<Id, T> where Id: Sync {}
+
+impl<Id, SendMsg> TcpReliableSender<Id, SendMsg>
 where
-    SendMsg: Message,
-    RecvMsg: Message,
     Id: Identifier,
 {
     fn new() -> Self {
@@ -42,7 +39,6 @@ where
             address_map: FnvHashMap::default(), 
             connections: FnvHashMap::default(), 
             _x: PhantomData, 
-            rng: SmallRng::from_entropy(), 
         }
     }
 
@@ -61,16 +57,16 @@ where
         self.address_map.clone()
     }
 
-    fn spawn_connection(address: SocketAddr) -> UnboundedSender<InnerMsg<SendMsg, RecvMsg>>
+    fn spawn_connection(address: SocketAddr) -> UnboundedSender<InnerMsg>
     {
         log::debug!("Spawning a new connection for {}", address);
         let (tx, rx) = unbounded_channel();
-        Connection::<SendMsg, RecvMsg>::spawn(address, rx);
+        Connection::spawn(address, rx);
         tx
     }
 
     /// Reliably send a message to a specific address.
-    pub async fn send(&mut self, recipient: Id, data: SendMsg) -> CancelHandler<RecvMsg>
+    pub async fn send(&mut self, recipient: Id, data: Bytes) -> CancelHandler
     {
         log::debug!("Async Sending {:?} to {:?}", data, recipient);
         let (tx, rx) = oneshot::channel();
@@ -90,7 +86,7 @@ where
         rx
     }
 
-    pub async fn broadcast(&mut self, recipients: &[Id], msg: SendMsg) -> Vec<CancelHandler<RecvMsg>>
+    pub async fn broadcast(&mut self, recipients: &[Id], msg: Bytes) -> Vec<CancelHandler>
     {
         let mut handlers = Vec::with_capacity(recipients.len());
         for recipient in recipients {
@@ -100,104 +96,21 @@ where
         handlers
     }
 
-    /// Pick a few addresses at random (specified by `nodes`) and send the message only to them.
-    /// It returns a vector of cancel handlers with no specific order.
-    pub async fn randcast(
-        &mut self,
-        mut recipients: Vec<Id>,
-        data: SendMsg,
-        num_nodes: usize,
-    ) -> Vec<CancelHandler<RecvMsg>> {
-        recipients.shuffle(&mut self.rng);
-        recipients.truncate(num_nodes);
-        self.broadcast(recipients.as_ref(), data).await
-    }
 }
 
-#[async_trait]
-impl<Id, SendMsg, RecvMsg> NetSender<Id, SendMsg> for TcpReliableSender<Id, SendMsg, RecvMsg>
-where
-    SendMsg: Message,
-    RecvMsg: Message,
-    Id: Identifier,
-{
-    async fn send(&mut self, recipient: Id, msg: SendMsg) {
-        let _handler = self.send(recipient, msg).await;
-    }
-
-    fn blocking_send(&mut self, recipient: Id, msg: SendMsg) {
-        log::debug!("Blocking Sending {:?} to {:?}", msg, recipient);
-        let (tx, rx) = oneshot::channel();
-        let addr = *self.address_map
-            .get(&recipient)
-            .unwrap_or_else(|| 
-                panic!("Requested to send a reliable message to {:?}, but address not found", recipient)
-            );
-        self.connections
-            .entry(recipient)
-            .or_insert_with(|| Self::spawn_connection(addr))
-            .send(InnerMsg { payload: msg, cancel_handler: tx })
-            .expect("Failed to send");
-        // Wait for a response
-        let _ = rx.blocking_recv();
-    }
-
-    async fn broadcast(&mut self, msg: SendMsg, recipients: &[Id]) {
-        let _ = self.broadcast(recipients, msg).await;
-    }
-
-    fn blocking_broadcast(&mut self, msg: SendMsg, recipients: &[Id]) {
-        // for recipient in recipients {
-        //     let handler = self.blocking_send(recipient.clone(), msg.clone());
-        //     handlers.push(handler);
-        // }
-
-        let mut handlers = Vec::with_capacity(recipients.len());
-        for recipient in recipients {
-            let (tx, rx) = oneshot::channel();
-            let addr = *self.address_map
-                .get(recipient)
-                .unwrap_or_else(|| 
-                    panic!("Requested to send a reliable message to {:?}, but address not found", recipient)
-                );
-            self.connections
-                .entry(recipient.clone())
-                .or_insert_with(|| Self::spawn_connection(addr))
-                .send(InnerMsg { payload: msg.clone(), cancel_handler: tx })
-                .expect("Failed to send");
-            handlers.push(rx);
-        }
-        for handler in handlers {
-            let _ = handler.blocking_recv();
-        }
-    }
-
-    async fn randcast(&mut self, msg: SendMsg, mut peers: Vec<Id>, subset_size: usize) {
-        peers.shuffle(&mut self.rng);
-        peers.truncate(subset_size);
-        self.broadcast(peers.as_ref(), msg).await;
-    }
-
-    fn blocking_randcast(&mut self, msg: SendMsg, mut peers: Vec<Id>, subset_size: usize) {
-        peers.shuffle(&mut self.rng);
-        peers.truncate(subset_size);
-        self.blocking_broadcast(msg, peers.as_ref());
-    }
-}
-
-struct Connection<SendMsg, RecvMsg> 
+struct Connection 
 {
     /// The destination address.
     address: SocketAddr,
     /// Channel from which the connection receives its commands.
-    receiver: UnboundedReceiver<InnerMsg<SendMsg, RecvMsg>>,
+    receiver: UnboundedReceiver<InnerMsg>,
     /// The initial delay to wait before re-attempting a connection (in ms).
     retry_delay: std::time::Duration,
     /// Buffer keeping all messages that need to be re-transmitted.
-    buffer: VecDeque<(SendMsg, oneshot::Sender<RecvMsg>)>,
+    buffer: VecDeque<(Bytes, oneshot::Sender<Bytes>)>,
 }
 
-impl<SendMsg, RecvMsg> Connection<SendMsg, RecvMsg>
+impl Connection
 {
     const RETRY_INITIAL: std::time::Duration = std::time::Duration::from_millis(50);
 }
@@ -228,12 +141,9 @@ impl Waiter {
     }
 }
 
-impl<SendMsg, RecvMsg> Connection<SendMsg, RecvMsg> 
-where 
-    SendMsg: Message,
-    RecvMsg: Message,
+impl Connection 
 {
-    fn spawn(address: SocketAddr, receiver: UnboundedReceiver<InnerMsg<SendMsg, RecvMsg>>)
+    fn spawn(address: SocketAddr, receiver: UnboundedReceiver<InnerMsg>)
     {
         log::debug!("Connection spawning: {}", address);
         tokio::spawn(async move {
@@ -282,16 +192,16 @@ where
     async fn keep_alive(&mut self, mut stream: TcpStream) -> NetError {
         // This buffer keeps all messages and handlers that we have successfully transmitted but for
         // which we are still waiting to receive an ACK.
-        let mut pending_replies : VecDeque<(SendMsg, oneshot::Sender<RecvMsg>)>= VecDeque::new();
+        let mut pending_replies : VecDeque<_>= VecDeque::new();
         'connection: loop {
             let (rd, wr) = stream.split();
             let mut reader = FramedRead::new(
                 rd, 
-                Decodec::<RecvMsg>::new()
+                LengthDelimitedCodec::new()
             );
             let mut writer = FramedWrite::new(
                 wr, 
-                EnCodec::<SendMsg>::new()
+                LengthDelimitedCodec::new()
             );
             // Try to send all messages of the buffer.
             while let Some((data, handler)) = self.buffer.pop_front() {
@@ -329,7 +239,7 @@ where
                     match response {
                         Some(Ok(msg)) => {
                             // Notify the handler that the message has been successfully sent.
-                            let _ = handler.send(msg);
+                            let _ = handler.send(msg.freeze());
                         },
                         _ => {
                             // Something has gone wrong (either the channel dropped or we failed to read from it).

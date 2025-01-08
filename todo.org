@@ -1,0 +1,22 @@
+* Inbox
+** TODO Implement TCP Receiver
+:LOGBOOK:
+CLOCK: [2025-01-03 Fri 16:28]--[2025-01-03 Fri 18:01] =>  1:33
+:END:
+Created: [2025-01-03 Fri]
+** TODO Add Acknowledgement crate as a dependency for TCP Sender
+[[file:~/Github/libnet-rs/tcp-receiver/src/job.rs]]
+Created: [2025-01-03 Fri]
+** TODO Add the acknowledgement crate as a dependency for TCP Receiver
+Created: [2025-01-03 Fri]
+** TODO Create an acknowledgement crate
+Created: [2025-01-03 Fri]
+** TODO Separate the library into separate crates
+:LOGBOOK:
+CLOCK: [2024-12-30 Mon 13:16]--[2024-12-30 Mon 14:21] =>  1:05
+:END:
+Created: [2024-12-30 Mon]
+** TODO Fix the tests
+Created: [2024-12-30 Mon]
+** TODO Add Acknowledgement Feature
+Created: [2024-12-30 Mon]

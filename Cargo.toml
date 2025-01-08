@@ -1,34 +1,23 @@
-[package]
-name = "network"
-version = "0.1.1"
-authors = ["Adithya Bhat <dth.bht@gmail.com>"]
-edition = "2021"
+[workspace]
+members = [
+  "tcp-sender",
+  "tcp-reliable-sender",
+  "tcp-receiver",
+  "common"
+]
+resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-serde = { version = "1", features = ["derive"]}
-fnv = "1"
-bincode = "1"
-async-trait = "0.1"
-log = "0"
+[workspace.dependencies]
 bytes = "1"
-tokio-stream = "0"
+log = "0"
+thiserror = "2"
 futures = "0"
-rand = { version = "0.7", features = ["small_rng"] }
-anyhow = "1"
-thiserror = "1"
+serde = { version = "1", features = ["derive"]}
 
-[dependencies.tokio-util]
+[workspace.dependencies.tokio-util]
 version = "0"
-features = ["codec", "compat"]
+features = ["codec"]
 
-[dependencies.tokio]
-features = ["net", "rt", "sync", "macros", "time"]
-version = "1"
-
-[features]
-tcp = []
-udp = []
-tls = []
-default = ["tcp"]
+[workspace.features]
+ack = ["dep:serde"]

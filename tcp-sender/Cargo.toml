@@ -1,0 +1,19 @@
+[package]
+name = "tcp-sender"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fnv = "1"
+log = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+
+[dependencies.tokio]
+features = ["net", "sync", "macros", "rt"]
+version = "1"
+
+[features]
+reliable = [ "tokio/time" ]

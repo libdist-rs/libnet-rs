@@ -1,0 +1,20 @@
+[package]
+name = "tcp-reliable-sender"
+version = "0.1.0"
+edition = "2021"
+author = "Adithya Bhat <dth.bht@gmail.com>"
+
+[dependencies]
+fnv = "1"
+log = "0"
+futures = { workspace = true }
+bytes = { workspace = true }
+thiserror = "2"
+
+[dependencies.tokio-util]
+version = "0"
+features = ["codec"]
+
+[dependencies.tokio]
+features = ["net", "sync", "macros", "rt", "rt-multi-thread", "time"]
+version = "1"
