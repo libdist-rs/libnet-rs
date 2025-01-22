@@ -2,7 +2,6 @@
 name = "tcp-reliable-sender"
 version = "0.1.0"
 edition = "2021"
-author = "Adithya Bhat <dth.bht@gmail.com>"
 
 [dependencies]
 fnv = "1"
