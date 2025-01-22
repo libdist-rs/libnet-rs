@@ -23,6 +23,7 @@ pub struct TcpReceiver<RecvMsg> {
 /// We only use RecvMsg as a phantom type, so it's safe to send and sync
 unsafe impl<RecvMsg> Send for TcpReceiver<RecvMsg> {}
 unsafe impl<RecvMsg> Sync for TcpReceiver<RecvMsg> {}
+
 impl<RecvMsg> Unpin for TcpReceiver<RecvMsg> {}
 
 impl<RecvMsg> Stream for TcpReceiver<RecvMsg>
