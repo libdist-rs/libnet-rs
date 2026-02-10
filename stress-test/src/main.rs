@@ -386,6 +386,8 @@ async fn bench_latency(num_messages: usize, msg_size: usize, options: Options) {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
+
     // Use high-throughput options for optimal performance benchmarks.
     // Users can also use Options::default() or Options::low_latency() depending on workload.
     let opts = Options::high_throughput();
@@ -398,7 +400,7 @@ async fn main() {
     println!("================================================================");
     println!();
 
-    // 1. Simple Sender: small messages, single peer
+    // ── Small-scale (10k) ──────────────────────────────────────────────
     bench_simple_sender(&BenchConfig {
         name: "SimpleSender: 10k x 64B, 1 peer",
         num_messages: 10_000,
@@ -407,7 +409,6 @@ async fn main() {
     }, opts.clone())
     .await;
 
-    // 2. Simple Sender: large messages
     bench_simple_sender(&BenchConfig {
         name: "SimpleSender: 5k x 4KB, 1 peer",
         num_messages: 5_000,
@@ -416,7 +417,6 @@ async fn main() {
     }, opts.clone())
     .await;
 
-    // 3. Simple Sender: fan-out to many peers
     bench_simple_sender(&BenchConfig {
         name: "SimpleSender: 10k x 256B, 10 peers",
         num_messages: 10_000,
@@ -425,7 +425,6 @@ async fn main() {
     }, opts.clone())
     .await;
 
-    // 4. Reliable Sender: single peer with ACKs
     bench_reliable_sender(&BenchConfig {
         name: "ReliableSender: 5k x 64B, 1 peer (with ACK)",
         num_messages: 5_000,
@@ -434,7 +433,6 @@ async fn main() {
     }, opts.clone())
     .await;
 
-    // 5. Reliable Sender: multiple peers
     bench_reliable_sender(&BenchConfig {
         name: "ReliableSender: 5k x 256B, 5 peers (with ACK)",
         num_messages: 5_000,
@@ -443,7 +441,6 @@ async fn main() {
     }, opts.clone())
     .await;
 
-    // 6. Broadcast fan-out
     bench_fanout(&BenchConfig {
         name: "Broadcast: 1k msgs x 10 peers, 128B",
         num_messages: 1_000,
@@ -452,9 +449,57 @@ async fn main() {
     }, opts.clone())
     .await;
 
-    // 7. Many-to-one contention
     bench_many_to_one(10, 1_000, 256, opts.clone()).await;
     bench_many_to_one(50, 200, 256, opts.clone()).await;
+
+    // ── High-volume (100k+) ──────────────────────────────────────────
+    println!("────────────────────────────────────────────────────────────────");
+    println!("  High-Volume Benchmarks (100k+ messages)");
+    println!("────────────────────────────────────────────────────────────────");
+    println!();
+
+    bench_simple_sender(&BenchConfig {
+        name: "SimpleSender: 500k x 64B, 1 peer",
+        num_messages: 500_000,
+        message_size: 64,
+        num_peers: 1,
+    }, opts.clone())
+    .await;
+
+    bench_simple_sender(&BenchConfig {
+        name: "SimpleSender: 500k x 256B, 10 peers",
+        num_messages: 500_000,
+        message_size: 256,
+        num_peers: 10,
+    }, opts.clone())
+    .await;
+
+    bench_reliable_sender(&BenchConfig {
+        name: "ReliableSender: 100k x 64B, 1 peer (with ACK)",
+        num_messages: 100_000,
+        message_size: 64,
+        num_peers: 1,
+    }, opts.clone())
+    .await;
+
+    bench_reliable_sender(&BenchConfig {
+        name: "ReliableSender: 100k x 256B, 5 peers (with ACK)",
+        num_messages: 100_000,
+        message_size: 256,
+        num_peers: 5,
+    }, opts.clone())
+    .await;
+
+    bench_fanout(&BenchConfig {
+        name: "Broadcast: 10k msgs x 10 peers, 128B",
+        num_messages: 10_000,
+        message_size: 128,
+        num_peers: 10,
+    }, opts.clone())
+    .await;
+
+    bench_many_to_one(10, 10_000, 256, opts.clone()).await;
+    bench_many_to_one(50, 2_000, 256, opts.clone()).await;
 
     // 8. Latency distribution -- use low-latency options for this benchmark
     let lat_opts = Options::low_latency();

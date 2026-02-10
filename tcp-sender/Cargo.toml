@@ -14,7 +14,7 @@ common = { version = "0.1.0", path = "../common" }
 socket2 = { workspace = true }
 
 [dependencies.tokio]
-features = ["net", "sync", "macros", "rt"]
+features = ["net", "sync", "rt"]
 version = "1"
 
 [features]

@@ -1,10 +1,13 @@
+use std::future::poll_fn;
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::task::Poll;
 
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use common::Options;
-use futures::{StreamExt, SinkExt};
+use futures::{Sink, Stream};
 use socket2::SockRef;
-use tokio::{net::{tcp::OwnedWriteHalf, TcpStream}, sync::mpsc::UnboundedReceiver};
+use tokio::{net::TcpStream, sync::mpsc::UnboundedReceiver};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 
@@ -54,17 +57,12 @@ impl Connection {
     async fn run(&mut self) -> Result<(), ConnectionError>
     {
         // Connect to the address
-        let stream_opt = TcpStream::connect(self.address).await;
-        if let Err(e) = stream_opt {
-            log::error!(
-                "Unable to connect to peer {} with error {}",
-                self.address,
-                e,
-            );
-            return Err(ConnectionError::ConnectionError(self.address, e));
-        }
+        let stream = TcpStream::connect(self.address).await
+            .map_err(|e| {
+                log::error!("Unable to connect to peer {} with error {}", self.address, e);
+                ConnectionError::ConnectionError(self.address, e)
+            })?;
 
-        let stream = stream_opt.unwrap();
         if self.options.tcp_nodelay {
             stream.set_nodelay(true).map_err(|e| ConnectionError::ConnectionError(self.address, e))?;
         }
@@ -89,48 +87,67 @@ impl Connection {
 
         log::debug!("Connected to {}", self.address);
 
-        // Main sender loop
-        loop {
-            tokio::select! {
-                // The outside world asked me to send a message
-                msg_opt = self.receiver.recv() => {
-                    if msg_opt.is_none() {
-                        log::error!("Connection to {} closed", self.address);
-                        log::error!("Shutting down connection to {}", self.address);
-                        return Err(ConnectionError::ConnectionClosed(self.address));
-                    }
-                    let msg = msg_opt.unwrap();
-                    self.handle_msg(&mut writer, msg).await?;
-                },
+        let address = self.address;
+        let receiver = &mut self.receiver;
 
-                // The connection sent some response
-                response_opt = reader.next() => {
-                    if response_opt.is_none() {
-                        log::error!("Error reading messages from {}", self.address);
-                        return Err(ConnectionError::ReadClosed(self.address));
+        // Single poll_fn combining channel receive, write, flush, and response read
+        poll_fn(|cx| {
+            let mut progress = true;
+            while progress {
+                progress = false;
+
+                // Phase 1: Flush pending writes
+                match Pin::new(&mut writer).poll_flush(cx) {
+                    Poll::Ready(Ok(())) => {}
+                    Poll::Ready(Err(e)) => {
+                        return Poll::Ready(Err(ConnectionError::WriteError(address, e)));
                     }
-                    let response = response_opt.unwrap();
-                    self.handle_response(response).await?;
+                    Poll::Pending => {}
+                }
+
+                // Phase 2: Check write readiness + drain channel
+                match Pin::new(&mut writer).poll_ready(cx) {
+                    Poll::Ready(Ok(())) => {
+                        match receiver.poll_recv(cx) {
+                            Poll::Ready(Some(msg)) => {
+                                if let Err(e) = Pin::new(&mut writer).start_send(msg) {
+                                    return Poll::Ready(Err(ConnectionError::WriteError(address, e)));
+                                }
+                                progress = true;
+                            }
+                            Poll::Ready(None) => {
+                                log::debug!("Channel closed for {}, flushing remaining data", address);
+                                // Channel closed — flush remaining data then terminate
+                                return match Pin::new(&mut writer).poll_close(cx) {
+                                    Poll::Ready(_) => Poll::Ready(Err(ConnectionError::ConnectionClosed(address))),
+                                    Poll::Pending => Poll::Pending,
+                                };
+                            }
+                            Poll::Pending => {}
+                        }
+                    }
+                    Poll::Pending => {}
+                    Poll::Ready(Err(e)) => {
+                        return Poll::Ready(Err(ConnectionError::WriteError(address, e)));
+                    }
+                }
+
+                // Phase 3: Read responses (drain peer responses)
+                match Pin::new(&mut reader).poll_next(cx) {
+                    Poll::Ready(Some(Ok(response))) => {
+                        progress = true;
+                        log::debug!("Received response from {}: {} bytes", address, response.len());
+                    }
+                    Poll::Ready(Some(Err(e))) => {
+                        return Poll::Ready(Err(ConnectionError::ReadError(address, e)));
+                    }
+                    Poll::Ready(None) => {
+                        return Poll::Ready(Err(ConnectionError::ReadClosed(address)));
+                    }
+                    Poll::Pending => {}
                 }
             }
-        }
-    }
-
-    async fn handle_msg(&mut self, writer: &mut FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>, msg: Bytes) -> Result<(), ConnectionError> {
-        // Send the message to the peer
-        let result = writer.send(msg).await;
-        if let Err(e) = result {
-            return Err(ConnectionError::WriteError(self.address, e));
-        }
-        Ok(())
-    }
-
-    async fn handle_response(&mut self, response: Result<BytesMut, std::io::Error>) -> Result<(), ConnectionError> {
-        if let Err(e) = response {
-            return Err(ConnectionError::ReadError(self.address, e));
-        }
-        // We drop the response for now
-        log::debug!("Received response from {}: {:?}", self.address, response);
-        Ok(())
+            Poll::Pending
+        }).await
     }
 }

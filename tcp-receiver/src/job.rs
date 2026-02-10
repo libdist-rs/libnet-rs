@@ -1,9 +1,12 @@
+use std::future::poll_fn;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::Poll;
 
 use bytes::Bytes;
 use common::Options;
-use futures::{SinkExt, StreamExt};
+use futures::{Sink, Stream};
 use socket2::SockRef;
 use tokio::{net::{TcpListener, TcpStream}, sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender}};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
@@ -95,29 +98,56 @@ impl TcpReceiverJob {
         let ack_bytes = Bytes::from_static(ACK_BYTES);
 
         tokio::spawn(async move {
-            loop {
-                let msg_opt = reader.next().await;
-                if msg_opt.is_none() {
-                    log::error!("Connection closed by peer");
-                    return;
-                }
-                let msg_res = msg_opt.unwrap();
-                if let Err(e) = msg_res {
-                    log::error!("Error reading message for peer {}: {}", peer_address, e);
-                    return;
-                }
-                let msg = msg_res.unwrap();
-                if let Err(e) = tx_connection.send(msg.freeze()) {
-                    log::warn!("Error sending message to receiver: {}", e);
-                    return;
-                }
-                #[cfg(feature = "ack")]
-                {
-                    if let Err(e) = writer.send(ack_bytes.clone()).await {
-                        log::error!("Error sending acknowledgement to peer {}: {}", peer_address, e);
-                        return;
+            let result: Result<(), std::io::Error> = poll_fn(|cx| {
+                let mut progress = true;
+                while progress {
+                    progress = false;
+
+                    // Phase 1: Flush pending ACK writes
+                    #[cfg(feature = "ack")]
+                    match Pin::new(&mut writer).poll_flush(cx) {
+                        Poll::Ready(Ok(())) => {}
+                        Poll::Ready(Err(e)) => {
+                            return Poll::Ready(Err(e));
+                        }
+                        Poll::Pending => {}
+                    }
+
+                    // Phase 2: Read incoming messages + immediately buffer ACK
+                    match Pin::new(&mut reader).poll_next(cx) {
+                        Poll::Ready(Some(Ok(msg))) => {
+                            progress = true;
+                            if let Err(e) = tx_connection.send(msg.freeze()) {
+                                log::warn!("Error sending message to receiver: {}", e);
+                                return Poll::Ready(Ok(()));
+                            }
+                            #[cfg(feature = "ack")]
+                            {
+                                // Best-effort ACK — if writer not ready, it'll flush next iteration
+                                if Pin::new(&mut writer).poll_ready(cx).is_ready() {
+                                    if let Err(e) = Pin::new(&mut writer).start_send(ack_bytes.clone()) {
+                                        log::error!("Error buffering ACK to peer {}: {}", peer_address, e);
+                                        return Poll::Ready(Err(e));
+                                    }
+                                }
+                            }
+                        }
+                        Poll::Ready(Some(Err(e))) => {
+                            log::error!("Error reading message for peer {}: {}", peer_address, e);
+                            return Poll::Ready(Err(e));
+                        }
+                        Poll::Ready(None) => {
+                            log::error!("Connection closed by peer {}", peer_address);
+                            return Poll::Ready(Ok(()));
+                        }
+                        Poll::Pending => {}
                     }
                 }
+                Poll::Pending
+            }).await;
+
+            if let Err(e) = result {
+                log::error!("Runner error for peer {}: {}", peer_address, e);
             }
         });
     }

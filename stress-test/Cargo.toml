@@ -18,6 +18,8 @@ futures = { workspace = true }
 tokio-util = { workspace = true }
 socket2 = { workspace = true }
 fnv = "1"
+log = { workspace = true }
+env_logger = "0.11"
 
 [dependencies.tokio]
 version = "1"
