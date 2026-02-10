@@ -2,7 +2,7 @@ use std::{fmt::Debug, marker::PhantomData, net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 pub use common::Options;
 use fnv::FnvHashMap;
-use tokio::sync::{oneshot, mpsc::{UnboundedSender, unbounded_channel}};
+use tokio::sync::{oneshot, mpsc::{Sender, channel, error::TrySendError}};
 
 mod connection;
 use connection::*;
@@ -26,7 +26,7 @@ struct InnerMsg
 pub struct TcpReliableSender<Id, SendMsg>
 {
     address_map: FnvHashMap<Id, SocketAddr>,
-    connections: FnvHashMap<Id, UnboundedSender<InnerMsg>>,
+    connections: FnvHashMap<Id, Sender<InnerMsg>>,
     options: Arc<Options>,
     _x: PhantomData<SendMsg>,
 }
@@ -45,10 +45,10 @@ impl<Id, SendMsg> TcpReliableSender<Id, SendMsg>
         }
     }
 
-    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> UnboundedSender<InnerMsg>
+    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> Sender<InnerMsg>
     {
         log::debug!("Spawning a new connection for {}", address);
-        let (tx, rx) = unbounded_channel();
+        let (tx, rx) = channel(options.channel_capacity);
         Connection::spawn(address, rx, (**options).clone());
         tx
     }
@@ -103,11 +103,19 @@ where Id: Debug + Eq + std::hash::Hash + Clone,
             Self::spawn_connection(addr, options)
         });
 
-        if let Err(e) = connection
-            .send(InnerMsg { payload: data, cancel_handler: tx })
-        {
-            log::error!("Net Send Error: {}", e);
-            return Err(OpError::SendError(recipient));
+        let inner = InnerMsg { payload: data, cancel_handler: tx };
+        match connection.try_send(inner) {
+            Ok(()) => return Ok(rx),
+            Err(TrySendError::Full(inner)) => {
+                if let Err(e) = connection.send(inner).await {
+                    log::error!("Net Send Error: {}", e);
+                    return Err(OpError::SendError(recipient));
+                }
+            }
+            Err(TrySendError::Closed(_)) => {
+                log::error!("Net Send Error: channel closed");
+                return Err(OpError::SendError(recipient));
+            }
         }
 
         Ok(rx)
@@ -129,9 +137,19 @@ where Id: Debug + Eq + std::hash::Hash + Clone,
         let mut handlers = Vec::with_capacity(messages.len());
         for data in messages {
             let (tx, rx) = oneshot::channel();
-            if let Err(e) = connection.send(InnerMsg { payload: data, cancel_handler: tx }) {
-                log::error!("Net Send Error: {}", e);
-                return Err(OpError::SendError(recipient));
+            let inner = InnerMsg { payload: data, cancel_handler: tx };
+            match connection.try_send(inner) {
+                Ok(()) => {}
+                Err(TrySendError::Full(inner)) => {
+                    if let Err(e) = connection.send(inner).await {
+                        log::error!("Net Send Error: {}", e);
+                        return Err(OpError::SendError(recipient));
+                    }
+                }
+                Err(TrySendError::Closed(_)) => {
+                    log::error!("Net Send Error: channel closed");
+                    return Err(OpError::SendError(recipient));
+                }
             }
             handlers.push(rx);
         }

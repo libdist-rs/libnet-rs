@@ -13,13 +13,9 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 
 #[cfg(feature = "ack")]
-use std::collections::VecDeque;
-#[cfg(feature = "ack")]
-use std::io::IoSlice;
+use bytes::{Buf, BufMut, BytesMut};
 #[cfg(feature = "ack")]
 use tokio::io::AsyncWrite;
-#[cfg(feature = "ack")]
-use bytes::{BufMut, BytesMut};
 #[cfg(feature = "ack")]
 use common::ACK_BYTES;
 
@@ -87,15 +83,6 @@ impl TcpReceiverJob {
 
     fn spawn_runner(socket: TcpStream, peer_address: SocketAddr, tx_connection: UnboundedSender<Bytes>, options: Arc<Options>)
     {
-        // Pre-encode the ACK frame: [4-byte BE length][ACK payload]
-        #[cfg(feature = "ack")]
-        let ack_frame: Bytes = {
-            let mut buf = BytesMut::with_capacity(4 + ACK_BYTES.len());
-            buf.put_u32(ACK_BYTES.len() as u32);
-            buf.extend_from_slice(ACK_BYTES);
-            buf.freeze()
-        };
-
         tokio::spawn(async move {
             let mut socket = socket;
 
@@ -111,37 +98,19 @@ impl TcpReceiverJob {
             read_codec.set_max_frame_length(options.max_frame_length);
             let mut reader = FramedRead::new(rd, read_codec);
 
+            // Contiguous write buffer for ACK frames
             #[cfg(feature = "ack")]
-            let mut write_queue: VecDeque<Bytes> = VecDeque::with_capacity(64);
-            #[cfg(feature = "ack")]
-            let mut front_offset: usize = 0;
+            let mut write_buf = BytesMut::with_capacity(512);
 
             let result: Result<(), std::io::Error> = poll_fn(|cx| {
                 let mut progress = true;
                 while progress {
                     progress = false;
 
-                    // Phase 1: Flush ACK write queue via writev
+                    // Phase 1: Flush ACK write buffer via poll_write
                     #[cfg(feature = "ack")]
-                    while !write_queue.is_empty() {
-                        let mut slices_buf: [IoSlice<'_>; 64] = std::array::from_fn(|_| IoSlice::new(&[]));
-                        let mut n_slices = 0;
-
-                        for (i, frame) in write_queue.iter().enumerate() {
-                            if i >= 64 { break; }
-                            let slice = if i == 0 {
-                                &frame[front_offset..]
-                            } else {
-                                &frame[..]
-                            };
-                            if slice.is_empty() { continue; }
-                            slices_buf[n_slices] = IoSlice::new(slice);
-                            n_slices += 1;
-                        }
-
-                        if n_slices == 0 { break; }
-
-                        match Pin::new(&mut wr).poll_write_vectored(cx, &slices_buf[..n_slices]) {
+                    while !write_buf.is_empty() {
+                        match Pin::new(&mut wr).poll_write(cx, &write_buf) {
                             Poll::Ready(Ok(0)) => {
                                 return Poll::Ready(Err(std::io::Error::new(
                                     std::io::ErrorKind::WriteZero,
@@ -150,19 +119,7 @@ impl TcpReceiverJob {
                             }
                             Poll::Ready(Ok(n)) => {
                                 progress = true;
-                                let mut remaining = n;
-                                while remaining > 0 {
-                                    let front = &write_queue[0];
-                                    let avail = front.len() - front_offset;
-                                    if remaining >= avail {
-                                        remaining -= avail;
-                                        write_queue.pop_front();
-                                        front_offset = 0;
-                                    } else {
-                                        front_offset += remaining;
-                                        remaining = 0;
-                                    }
-                                }
+                                write_buf.advance(n);
                             }
                             Poll::Ready(Err(e)) => {
                                 return Poll::Ready(Err(e));
@@ -171,9 +128,15 @@ impl TcpReceiverJob {
                         }
                     }
 
-                    // Phase 1b: Flush kernel buffer when write queue is empty
+                    // Reclaim capacity when fully drained
                     #[cfg(feature = "ack")]
-                    if write_queue.is_empty() {
+                    if write_buf.is_empty() {
+                        write_buf.clear();
+                    }
+
+                    // Phase 1b: Flush kernel buffer when write buffer is empty
+                    #[cfg(feature = "ack")]
+                    if write_buf.is_empty() {
                         match Pin::new(&mut wr).poll_flush(cx) {
                             Poll::Ready(Ok(())) => {}
                             Poll::Ready(Err(e)) => {
@@ -183,7 +146,7 @@ impl TcpReceiverJob {
                         }
                     }
 
-                    // Phase 2: Read incoming messages + queue ACK
+                    // Phase 2: Read incoming messages + encode ACK into write buffer
                     match Pin::new(&mut reader).poll_next(cx) {
                         Poll::Ready(Some(Ok(msg))) => {
                             progress = true;
@@ -193,7 +156,8 @@ impl TcpReceiverJob {
                             }
                             #[cfg(feature = "ack")]
                             {
-                                write_queue.push_back(ack_frame.clone());
+                                write_buf.put_u32(ACK_BYTES.len() as u32);
+                                write_buf.extend_from_slice(ACK_BYTES);
                             }
                         }
                         Poll::Ready(Some(Err(e))) => {

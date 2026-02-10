@@ -2,7 +2,7 @@ use std::{fmt::Debug, net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 pub use common::Options;
 use fnv::FnvHashMap;
-use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
+use tokio::sync::mpsc::{Sender, channel, error::TrySendError};
 
 mod connection;
 use connection::*;
@@ -10,7 +10,7 @@ use connection::*;
 pub struct TcpSimpleSender<Id, SendMsg>
 {
     address_map: FnvHashMap<Id, SocketAddr>,
-    connections: FnvHashMap<Id, UnboundedSender<Bytes>>,
+    connections: FnvHashMap<Id, Sender<Bytes>>,
     options: Arc<Options>,
     _x: std::marker::PhantomData<SendMsg>,
 }
@@ -63,9 +63,9 @@ impl<Id, SendMsg> TcpSimpleSender<Id, SendMsg>
         }
     }
 
-    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> UnboundedSender<Bytes>
+    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> Sender<Bytes>
     {
-        let (tx,rx) = unbounded_channel();
+        let (tx, rx) = channel(options.channel_capacity);
         Connection::spawn(address, rx, (**options).clone());
         tx
     }
@@ -90,26 +90,27 @@ where Id: Debug + Eq + std::hash::Hash + Clone,
             // We got lucky since we have already connected to this node
             .or_insert_with(|| Self::spawn_connection(*address, options));
 
-        let msg = if let Err(e) = conn.send(msg) {
-            e.0
-        } else {
-            return Ok(());
-        };
-
-        // We have a stale connection
-        // Remove it
-        self.connections
-            .remove(&sender);
-        // Try a new connection
-        let conn = Self::spawn_connection(*address, &self.options);
-        if let Err(e) = conn.send(msg) {
-            return Err(TcpSimpleSenderError::ConnectionSendError(e));
+        // Fast path: try_send is synchronous (no yield) when there's capacity
+        match conn.try_send(msg) {
+            Ok(()) => return Ok(()),
+            Err(TrySendError::Full(msg)) => {
+                // Channel full — await backpressure
+                if let Err(e) = conn.send(msg).await {
+                    return Err(TcpSimpleSenderError::ConnectionSendError(e));
+                }
+                return Ok(());
+            }
+            Err(TrySendError::Closed(msg)) => {
+                // Stale connection — remove and retry with a new one
+                self.connections.remove(&sender);
+                let conn = Self::spawn_connection(*address, &self.options);
+                if let Err(e) = conn.send(msg).await {
+                    return Err(TcpSimpleSenderError::ConnectionSendError(e));
+                }
+                self.connections.insert(sender, conn);
+                Ok(())
+            }
         }
-        self.connections
-            .insert(sender, conn);
-
-        // A simple sender will give up at this point
-        Ok(())
     }
 
     pub async fn broadcast(&mut self, peers: &[Id], msg: Bytes) -> Result<(), TcpSimpleSenderError>

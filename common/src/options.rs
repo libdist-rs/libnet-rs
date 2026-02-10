@@ -61,6 +61,12 @@ pub struct Options {
     /// TCP receive buffer size (SO_RCVBUF) in bytes. `None` uses the OS default.
     /// Default: None (OS default).
     pub tcp_recv_buffer: Option<usize>,
+
+    /// Channel capacity for bounded sender-to-connection channels.
+    /// Controls how many messages can be queued before the sender blocks.
+    /// Higher values reduce contention; lower values provide earlier backpressure.
+    /// Default: 1024.
+    pub channel_capacity: usize,
 }
 
 impl Default for Options {
@@ -75,6 +81,7 @@ impl Default for Options {
             retry_max_delay: Duration::from_secs(60),
             tcp_send_buffer: None,
             tcp_recv_buffer: None,
+            channel_capacity: 1024,
         }
     }
 }
@@ -95,6 +102,7 @@ impl Options {
             retry_max_delay: Duration::from_secs(30),
             tcp_send_buffer: Some(256 * 1024),
             tcp_recv_buffer: Some(256 * 1024),
+            channel_capacity: 4096,
         }
     }
 
@@ -114,6 +122,7 @@ impl Options {
             // Small kernel buffers reduce buffering latency
             tcp_send_buffer: Some(32 * 1024),
             tcp_recv_buffer: Some(32 * 1024),
+            channel_capacity: 512,
         }
     }
 }

@@ -1,10 +1,10 @@
-use std::{cmp::min, collections::VecDeque, future::poll_fn, io::IoSlice, net::SocketAddr, pin::Pin, task::Poll, time::Duration};
+use std::{cmp::min, collections::VecDeque, future::poll_fn, net::SocketAddr, pin::Pin, task::Poll, time::Duration};
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use common::Options;
 use futures::Stream;
 use socket2::SockRef;
-use tokio::{io::AsyncWrite, net::TcpStream, sync::{mpsc::UnboundedReceiver, oneshot}, time::sleep};
+use tokio::{io::AsyncWrite, net::TcpStream, sync::{mpsc::Receiver, oneshot}, time::sleep};
 use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 
 use crate::{ConnectionError, InnerMsg, SendError};
@@ -14,7 +14,7 @@ pub(crate) struct Connection
     /// The destination address.
     pub(super) address: SocketAddr,
     /// Channel from which the connection receives its commands.
-    pub(super) receiver: UnboundedReceiver<InnerMsg>,
+    pub(super) receiver: Receiver<InnerMsg>,
     /// Configuration options.
     pub(super) options: Options,
     /// Buffer keeping all messages that need to be re-transmitted.
@@ -48,22 +48,9 @@ impl Waiter {
     }
 }
 
-/// Encode a message as a length-delimited frame: [4-byte BE length][payload].
-#[inline]
-fn encode_frame(payload: &Bytes) -> Bytes {
-    let len = payload.len() as u32;
-    let mut buf = BytesMut::with_capacity(4 + payload.len());
-    buf.put_u32(len);
-    buf.extend_from_slice(payload);
-    buf.freeze()
-}
-
-/// Maximum number of IoSlices to pass to a single writev call.
-const MAX_IOVECS: usize = 64;
-
 impl Connection
 {
-    pub fn spawn(address: SocketAddr, receiver: UnboundedReceiver<InnerMsg>, options: Options)
+    pub fn spawn(address: SocketAddr, receiver: Receiver<InnerMsg>, options: Options)
     {
         log::debug!("Connection spawning: {}", address);
         let buffer_capacity = options.buffer_capacity;
@@ -151,37 +138,17 @@ impl Connection
         let backpressure_boundary = self.options.write_buffer_size;
         let batch_drain_cap = self.options.batch_drain_cap;
 
-        // Write queue: encoded frames waiting to be written via writev.
-        // Each entry corresponds 1:1 with a message moved to pending_replies.
-        let mut write_queue: VecDeque<Bytes> = VecDeque::with_capacity(128);
-        let mut front_offset: usize = 0;
-        let mut buffered: usize = 0;
+        // Contiguous write buffer: frames encoded directly here, flushed via poll_write
+        let mut write_buf = BytesMut::with_capacity(backpressure_boundary);
 
         let error = poll_fn(|cx| {
             let mut progress = true;
             while progress {
                 progress = false;
 
-                // Phase 1: Flush write queue via writev
-                while !write_queue.is_empty() {
-                    let mut slices_buf: [IoSlice<'_>; MAX_IOVECS] = std::array::from_fn(|_| IoSlice::new(&[]));
-                    let mut n_slices = 0;
-
-                    for (i, frame) in write_queue.iter().enumerate() {
-                        if i >= MAX_IOVECS { break; }
-                        let slice = if i == 0 {
-                            &frame[front_offset..]
-                        } else {
-                            &frame[..]
-                        };
-                        if slice.is_empty() { continue; }
-                        slices_buf[n_slices] = IoSlice::new(slice);
-                        n_slices += 1;
-                    }
-
-                    if n_slices == 0 { break; }
-
-                    match Pin::new(&mut wr).poll_write_vectored(cx, &slices_buf[..n_slices]) {
+                // Phase 1: Flush write buffer via poll_write
+                while !write_buf.is_empty() {
+                    match Pin::new(&mut wr).poll_write(cx, &write_buf) {
                         Poll::Ready(Ok(0)) => {
                             return Poll::Ready(ConnectionError::SendingFailed(
                                 address,
@@ -190,21 +157,7 @@ impl Connection
                         }
                         Poll::Ready(Ok(n)) => {
                             progress = true;
-                            buffered -= n;
-
-                            let mut remaining = n;
-                            while remaining > 0 {
-                                let front = &write_queue[0];
-                                let avail = front.len() - front_offset;
-                                if remaining >= avail {
-                                    remaining -= avail;
-                                    write_queue.pop_front();
-                                    front_offset = 0;
-                                } else {
-                                    front_offset += remaining;
-                                    remaining = 0;
-                                }
-                            }
+                            write_buf.advance(n);
                         }
                         Poll::Ready(Err(e)) => {
                             return Poll::Ready(ConnectionError::SendingFailed(address, e));
@@ -213,8 +166,13 @@ impl Connection
                     }
                 }
 
-                // Phase 2: Flush kernel buffer when write queue is empty
-                if write_queue.is_empty() && buffered == 0 {
+                // Reclaim capacity when fully drained
+                if write_buf.is_empty() {
+                    write_buf.clear();
+                }
+
+                // Phase 2: Flush kernel buffer when write buffer is empty
+                if write_buf.is_empty() {
                     match Pin::new(&mut wr).poll_flush(cx) {
                         Poll::Ready(Ok(())) => {}
                         Poll::Ready(Err(e)) => {
@@ -224,11 +182,11 @@ impl Connection
                     }
                 }
 
-                // Phase 3: Drain send buffer (messages awaiting transmission) into write queue
-                if buffered < backpressure_boundary {
+                // Phase 3: Drain send buffer into write buffer (respecting backpressure)
+                if write_buf.len() < backpressure_boundary {
                     let mut drained = 0;
                     loop {
-                        if drained >= batch_drain_cap || buffered >= backpressure_boundary {
+                        if drained >= batch_drain_cap || write_buf.len() >= backpressure_boundary {
                             break;
                         }
                         let front = buffer.front();
@@ -241,9 +199,8 @@ impl Connection
                             continue;
                         }
                         let (data, handler) = buffer.pop_front().unwrap();
-                        let frame = encode_frame(&data);
-                        buffered += frame.len();
-                        write_queue.push_back(frame);
+                        write_buf.put_u32(data.len() as u32);
+                        write_buf.extend_from_slice(&data);
                         log::debug!("Message sent to {}", address);
                         pending_replies.push_back((data, handler));
                         drained += 1;
@@ -260,10 +217,8 @@ impl Connection
                     }
                     Poll::Ready(None) => {
                         log::warn!("Receiver channel closed for {}, flushing remaining data", address);
-                        // Channel closed — flush remaining data then terminate
-                        if !write_queue.is_empty() {
+                        if !write_buf.is_empty() {
                             progress = true;
-                            // Continue loop to flush write queue first
                             continue;
                         }
                         return match Pin::new(&mut wr).poll_shutdown(cx) {
