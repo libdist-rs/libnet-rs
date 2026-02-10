@@ -1,5 +1,6 @@
-use std::{fmt::Debug, marker::PhantomData, net::SocketAddr};
+use std::{fmt::Debug, marker::PhantomData, net::SocketAddr, sync::Arc};
 use bytes::Bytes;
+pub use common::Options;
 use fnv::FnvHashMap;
 use tokio::sync::{oneshot, mpsc::{UnboundedSender, unbounded_channel}};
 
@@ -26,6 +27,7 @@ pub struct TcpReliableSender<Id, SendMsg>
 {
     address_map: FnvHashMap<Id, SocketAddr>,
     connections: FnvHashMap<Id, UnboundedSender<InnerMsg>>,
+    options: Arc<Options>,
     _x: PhantomData<SendMsg>,
 }
 
@@ -34,19 +36,20 @@ unsafe impl<Id, T> Sync for TcpReliableSender<Id, T> where Id: Sync {}
 
 impl<Id, SendMsg> TcpReliableSender<Id, SendMsg>
 {
-    fn new() -> Self {
+    fn new(options: Options) -> Self {
         Self {
             address_map: FnvHashMap::default(),
             connections: FnvHashMap::default(),
+            options: Arc::new(options),
             _x: PhantomData,
         }
     }
 
-    fn spawn_connection(address: SocketAddr) -> UnboundedSender<InnerMsg>
+    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> UnboundedSender<InnerMsg>
     {
         log::debug!("Spawning a new connection for {}", address);
         let (tx, rx) = unbounded_channel();
-        Connection::spawn(address, rx);
+        Connection::spawn(address, rx, (**options).clone());
         tx
     }
 }
@@ -56,7 +59,12 @@ where Id: Eq + std::hash::Hash,
 {
     pub fn with_peers(peers: FnvHashMap<Id, SocketAddr>) -> Self
     {
-        let mut sender = Self::new();
+        Self::with_peers_and_options(peers, Options::default())
+    }
+
+    pub fn with_peers_and_options(peers: FnvHashMap<Id, SocketAddr>, options: Options) -> Self
+    {
+        let mut sender = Self::new(options);
         for (id, peer) in peers {
             sender.address_map
                 .insert(id, peer);
@@ -88,9 +96,10 @@ where Id: Debug + Eq + std::hash::Hash + Clone,
                 Some(addr) => *addr,
                 None => { return Err(OpError::UnknownPeer(recipient)); }
             };
+        let options = &self.options;
         let connection = self.connections.entry(recipient.clone())
         .or_insert_with(|| {
-            Self::spawn_connection(addr)
+            Self::spawn_connection(addr, options)
         });
 
         if let Err(e) = connection

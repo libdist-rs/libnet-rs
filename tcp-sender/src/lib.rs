@@ -1,16 +1,17 @@
-use std::{fmt::Debug,net::SocketAddr};
+use std::{fmt::Debug, net::SocketAddr, sync::Arc};
 use bytes::Bytes;
+pub use common::Options;
 use fnv::FnvHashMap;
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 
 mod connection;
 use connection::*;
 
-#[derive(Debug)]
 pub struct TcpSimpleSender<Id, SendMsg>
 {
     address_map: FnvHashMap<Id, SocketAddr>,
     connections: FnvHashMap<Id, UnboundedSender<Bytes>>,
+    options: Arc<Options>,
     _x: std::marker::PhantomData<SendMsg>,
 }
 
@@ -32,7 +33,12 @@ impl<Id, SendMsg> TcpSimpleSender<Id, SendMsg>
 {
     pub fn with_peers(peers: FnvHashMap<Id, SocketAddr>) -> Self
     {
-        let mut sender = Self::new();
+        Self::with_peers_and_options(peers, Options::default())
+    }
+
+    pub fn with_peers_and_options(peers: FnvHashMap<Id, SocketAddr>, options: Options) -> Self
+    {
+        let mut sender = Self::new(options);
         for (id, peer) in peers {
             sender.address_map
                 .insert(id, peer);
@@ -48,21 +54,19 @@ impl<Id, SendMsg> TcpSimpleSender<Id, SendMsg>
 
 impl<Id, SendMsg> TcpSimpleSender<Id, SendMsg>
 {
-    fn new() -> Self {
+    fn new(options: Options) -> Self {
         Self {
             address_map: FnvHashMap::default(),
             connections: FnvHashMap::default(),
+            options: Arc::new(options),
             _x: std::marker::PhantomData,
         }
     }
-}
 
-impl<Id, SendMsg> TcpSimpleSender<Id, SendMsg>
-{
-    fn spawn_connection(address: SocketAddr) -> UnboundedSender<Bytes>
+    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> UnboundedSender<Bytes>
     {
         let (tx,rx) = unbounded_channel();
-        Connection::spawn(address, rx);
+        Connection::spawn(address, rx, (**options).clone());
         tx
     }
 }
@@ -79,11 +83,12 @@ where Id: Debug + Eq + std::hash::Hash + Clone,
         }
         let address = addr_opt.unwrap();
 
+        let options = &self.options;
         let conn = self
             .connections
             .entry(sender.clone())
             // We got lucky since we have already connected to this node
-            .or_insert_with(|| Self::spawn_connection(*address));
+            .or_insert_with(|| Self::spawn_connection(*address, options));
 
         let msg = if let Err(e) = conn.send(msg) {
             e.0
@@ -96,7 +101,7 @@ where Id: Debug + Eq + std::hash::Hash + Clone,
         self.connections
             .remove(&sender);
         // Try a new connection
-        let conn = Self::spawn_connection(*address);
+        let conn = Self::spawn_connection(*address, &self.options);
         if let Err(e) = conn.send(msg) {
             return Err(TcpSimpleSenderError::ConnectionSendError(e));
         }

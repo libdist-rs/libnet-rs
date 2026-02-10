@@ -1,5 +1,6 @@
 use bytes::Bytes;
 use common::Message;
+pub use common::Options;
 use futures::Stream;
 use std::{
     marker::PhantomData,
@@ -57,7 +58,11 @@ impl<RecvMsg> TcpReceiver<RecvMsg> {
     }
 
     pub fn spawn(address: SocketAddr) -> Self {
-        let rx_net_msgs = TcpReceiverJob::spawn(address);
+        Self::spawn_with_options(address, Options::default())
+    }
+
+    pub fn spawn_with_options(address: SocketAddr, options: Options) -> Self {
+        let rx_net_msgs = TcpReceiverJob::spawn(address, options);
         Self::new(rx_net_msgs)
     }
 }

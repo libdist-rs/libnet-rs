@@ -1,0 +1,24 @@
+[package]
+name = "stress-test"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "stress-test"
+path = "src/main.rs"
+
+[dependencies]
+tcp-sender = { path = "../tcp-sender" }
+tcp-receiver = { path = "../tcp-receiver" }
+tcp-reliable-sender = { path = "../tcp-reliable-sender" }
+common = { path = "../common" }
+
+bytes = { workspace = true }
+futures = { workspace = true }
+tokio-util = { workspace = true }
+socket2 = { workspace = true }
+fnv = "1"
+
+[dependencies.tokio]
+version = "1"
+features = ["net", "sync", "macros", "rt-multi-thread", "time"]

@@ -6,6 +6,9 @@ pub trait Message {
         Self: Sized;
 }
 
+mod options;
+pub use options::Options;
+
 #[cfg(feature = "ack")]
 mod ack;
 #[cfg(feature = "ack")]

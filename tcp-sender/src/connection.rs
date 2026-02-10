@@ -1,8 +1,9 @@
-
 use std::net::SocketAddr;
 
 use bytes::{Bytes, BytesMut};
+use common::Options;
 use futures::{StreamExt, SinkExt};
+use socket2::SockRef;
 use tokio::{net::{tcp::OwnedWriteHalf, TcpStream}, sync::mpsc::UnboundedReceiver};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
@@ -10,6 +11,7 @@ use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 pub(crate) struct Connection {
     address: SocketAddr,
     receiver: UnboundedReceiver<Bytes>,
+    options: Options,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -32,17 +34,18 @@ pub enum ConnectionError {
 
 
 impl Connection {
-    fn new(address: SocketAddr, receiver: UnboundedReceiver<Bytes>) -> Self {
-        Self { address, receiver}
+    fn new(address: SocketAddr, receiver: UnboundedReceiver<Bytes>, options: Options) -> Self {
+        Self { address, receiver, options }
     }
 
     pub(crate) fn spawn(
         address: SocketAddr,
         rx: UnboundedReceiver<Bytes>,
+        options: Options,
     )
     {
         tokio::spawn(async move {
-            if let Err(e) = Self::new(address, rx).run().await {
+            if let Err(e) = Self::new(address, rx, options).run().await {
                 log::error!("Error in connection to {}: {}", address, e);
             }
         });
@@ -62,9 +65,27 @@ impl Connection {
         }
 
         let stream = stream_opt.unwrap();
+        if self.options.tcp_nodelay {
+            stream.set_nodelay(true).map_err(|e| ConnectionError::ConnectionError(self.address, e))?;
+        }
+        // Apply socket buffer tuning
+        let sock_ref = SockRef::from(&stream);
+        if let Some(size) = self.options.tcp_send_buffer {
+            let _ = sock_ref.set_send_buffer_size(size);
+        }
+        if let Some(size) = self.options.tcp_recv_buffer {
+            let _ = sock_ref.set_recv_buffer_size(size);
+        }
         let (rd, wr) = stream.into_split();
-        let mut reader = FramedRead::new(rd, LengthDelimitedCodec::new());
-        let mut writer = FramedWrite::new(wr, LengthDelimitedCodec::new());
+
+        let mut codec = LengthDelimitedCodec::new();
+        codec.set_max_frame_length(self.options.max_frame_length);
+        let mut reader = FramedRead::new(rd, codec);
+
+        let mut codec = LengthDelimitedCodec::new();
+        codec.set_max_frame_length(self.options.max_frame_length);
+        let mut writer = FramedWrite::new(wr, codec);
+        writer.set_backpressure_boundary(self.options.write_buffer_size);
 
         log::debug!("Connected to {}", self.address);
 

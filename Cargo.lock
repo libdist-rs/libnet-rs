@@ -281,6 +281,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "stress-test"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "common",
+ "fnv",
+ "futures",
+ "socket2",
+ "tcp-receiver",
+ "tcp-reliable-sender",
+ "tcp-sender",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -299,6 +315,7 @@ dependencies = [
  "common",
  "futures",
  "log",
+ "socket2",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -309,9 +326,11 @@ name = "tcp-reliable-sender"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "common",
  "fnv",
  "futures",
  "log",
+ "socket2",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -322,9 +341,11 @@ name = "tcp-sender"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "common",
  "fnv",
  "futures",
  "log",
+ "socket2",
  "thiserror",
  "tokio",
  "tokio-util",

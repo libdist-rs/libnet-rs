@@ -3,7 +3,8 @@ members = [
   "tcp-sender",
   "tcp-reliable-sender",
   "tcp-receiver",
-  "common"
+  "common",
+  "stress-test",
 ]
 resolver = "2"
 
@@ -14,6 +15,7 @@ log = "0"
 thiserror = "2"
 futures = "0"
 serde = { version = "1", features = ["derive"]}
+socket2 = "0.5"
 
 [workspace.dependencies.tokio-util]
 version = "0"

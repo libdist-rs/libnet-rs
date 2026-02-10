@@ -9,6 +9,8 @@ log = "0"
 futures = { workspace = true }
 bytes = { workspace = true }
 thiserror = "2"
+common = { version = "0.1.0", path = "../common" }
+socket2 = { workspace = true }
 
 [dependencies.tokio-util]
 version = "0"

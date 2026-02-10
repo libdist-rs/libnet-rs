@@ -1,7 +1,9 @@
 use std::{cmp::min, collections::VecDeque, net::SocketAddr, time::Duration};
 
 use bytes::Bytes;
+use common::Options;
 use futures::{SinkExt, StreamExt};
+use socket2::SockRef;
 use tokio::{net::TcpStream, sync::{mpsc::UnboundedReceiver, oneshot}, time::sleep};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
@@ -13,26 +15,22 @@ pub(crate) struct Connection
     pub(super) address: SocketAddr,
     /// Channel from which the connection receives its commands.
     pub(super) receiver: UnboundedReceiver<InnerMsg>,
-    /// The initial delay to wait before re-attempting a connection (in ms).
-    pub(super) retry_delay: std::time::Duration,
+    /// Configuration options.
+    pub(super) options: Options,
     /// Buffer keeping all messages that need to be re-transmitted.
     pub(super) buffer: VecDeque<(Bytes, oneshot::Sender<Result<Bytes, SendError>>)>,
-}
-
-impl Connection
-{
-    pub(super) const RETRY_INITIAL: std::time::Duration = std::time::Duration::from_millis(50);
 }
 
 struct Waiter {
     delay: Duration,
     current: Duration,
+    max_delay: Duration,
     retry: usize,
 }
 
 impl Waiter {
-    fn new(delay: std::time::Duration) -> Self {
-        Self { delay, current: delay, retry: 0 }
+    fn new(delay: Duration, max_delay: Duration) -> Self {
+        Self { delay, current: delay, max_delay, retry: 0 }
     }
 
     fn reset(&mut self) {
@@ -46,20 +44,21 @@ impl Waiter {
 
     fn new_attempt(&mut self) {
         self.retry += 1;
-        self.current = min(2*self.current, Duration::from_millis(60_000));
+        self.current = min(2*self.current, self.max_delay);
     }
 }
 
 impl Connection
 {
-    pub fn spawn(address: SocketAddr, receiver: UnboundedReceiver<InnerMsg>)
+    pub fn spawn(address: SocketAddr, receiver: UnboundedReceiver<InnerMsg>, options: Options)
     {
         log::debug!("Connection spawning: {}", address);
+        let buffer_capacity = options.buffer_capacity;
         let mut connection = Self {
             address,
             receiver,
-            retry_delay: Self::RETRY_INITIAL,
-            buffer: VecDeque::default(),
+            options,
+            buffer: VecDeque::with_capacity(buffer_capacity),
         };
 
         log::debug!("Spawning connection task for {}", address);
@@ -78,11 +77,24 @@ impl Connection
     pub(super) async fn run(&mut self) -> Result<(), ConnectionError>
     {
         log::debug!("Running Connection Loop for {}", self.address);
-        let mut waiter: Waiter = Waiter::new(self.retry_delay);
+        let mut waiter = Waiter::new(self.options.retry_initial_delay, self.options.retry_max_delay);
         loop {
             match TcpStream::connect(self.address).await {
                 Ok(stream) => {
                     log::info!("Connected to {}", self.address);
+                    if self.options.tcp_nodelay {
+                        if let Err(e) = stream.set_nodelay(true) {
+                            log::warn!("Failed to set TCP_NODELAY for {}: {}", self.address, e);
+                        }
+                    }
+                    // Apply socket buffer tuning
+                    let sock_ref = SockRef::from(&stream);
+                    if let Some(size) = self.options.tcp_send_buffer {
+                        let _ = sock_ref.set_send_buffer_size(size);
+                    }
+                    if let Some(size) = self.options.tcp_recv_buffer {
+                        let _ = sock_ref.set_recv_buffer_size(size);
+                    }
                     // Reset the delay back to max
                     waiter.reset();
 
@@ -110,11 +122,11 @@ impl Connection
         log::debug!("Starting keep_alive for {}", self.address);
         // This buffer keeps all messages and handlers that we have successfully transmitted but for
         // which we are still waiting to receive an ACK.
-        let mut pending_replies : VecDeque<_>= VecDeque::new();
-        let mut framed_stream = Framed::new(
-            stream,
-            LengthDelimitedCodec::new()
-        );
+        let mut pending_replies: VecDeque<_> = VecDeque::with_capacity(self.options.buffer_capacity);
+
+        let mut codec = LengthDelimitedCodec::new();
+        codec.set_max_frame_length(self.options.max_frame_length);
+        let mut framed_stream = Framed::new(stream, codec);
 
         let error = 'connection: loop {
 
