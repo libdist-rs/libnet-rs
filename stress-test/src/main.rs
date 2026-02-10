@@ -226,6 +226,58 @@ async fn bench_reliable_sender(config: &BenchConfig, options: Options) {
     print_results(config.name, elapsed, received, config.message_size);
 }
 
+// ─── Benchmark: Reliable Sender throughput (send_many) ───────────────────────
+
+async fn bench_reliable_sender_many(config: &BenchConfig, options: Options) {
+    let base = port_offset();
+    let payload = config.payload();
+    let counter = Arc::new(AtomicU64::new(0));
+
+    let mut peers: FnvHashMap<usize, SocketAddr> = FnvHashMap::default();
+    let mut server_handles = Vec::new();
+
+    for i in 0..config.num_peers {
+        let address = addr(base + i as u16);
+        peers.insert(i, address);
+        let msgs_per_peer = config.num_messages / config.num_peers;
+        let c = counter.clone();
+        let opts = options.clone();
+        server_handles.push(tokio::spawn(async move {
+            echo_server(address, msgs_per_peer, c, opts).await;
+        }));
+    }
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let mut sender = TcpReliableSender::<usize, ()>::with_peers_and_options(peers, options);
+
+    let start = Instant::now();
+
+    // Build per-peer message batches and send_many
+    let mut all_handlers = Vec::with_capacity(config.num_messages);
+    let msgs_per_peer = config.num_messages / config.num_peers;
+    for peer in 0..config.num_peers {
+        let batch: Vec<Bytes> = (0..msgs_per_peer).map(|_| payload.clone()).collect();
+        match sender.send_many(peer, batch).await {
+            Ok(handlers) => all_handlers.extend(handlers),
+            Err(e) => eprintln!("send_many error: {e}"),
+        }
+    }
+
+    // Wait for all ACKs
+    for h in all_handlers {
+        let _ = tokio::time::timeout(Duration::from_secs(30), h).await;
+    }
+
+    for h in server_handles {
+        let _ = tokio::time::timeout(Duration::from_secs(30), h).await;
+    }
+    let elapsed = start.elapsed();
+
+    let received = counter.load(Ordering::Relaxed) as usize;
+    print_results(config.name, elapsed, received, config.message_size);
+}
+
 // ─── Benchmark: Broadcast fan-out ───────────────────────────────────────────
 
 async fn bench_fanout(config: &BenchConfig, options: Options) {
@@ -441,6 +493,22 @@ async fn main() {
     }, opts.clone())
     .await;
 
+    bench_reliable_sender_many(&BenchConfig {
+        name: "ReliableSender send_many: 5k x 64B, 1 peer (with ACK)",
+        num_messages: 5_000,
+        message_size: 64,
+        num_peers: 1,
+    }, opts.clone())
+    .await;
+
+    bench_reliable_sender_many(&BenchConfig {
+        name: "ReliableSender send_many: 5k x 256B, 5 peers (with ACK)",
+        num_messages: 5_000,
+        message_size: 256,
+        num_peers: 5,
+    }, opts.clone())
+    .await;
+
     bench_fanout(&BenchConfig {
         name: "Broadcast: 1k msgs x 10 peers, 128B",
         num_messages: 1_000,
@@ -484,6 +552,22 @@ async fn main() {
 
     bench_reliable_sender(&BenchConfig {
         name: "ReliableSender: 100k x 256B, 5 peers (with ACK)",
+        num_messages: 100_000,
+        message_size: 256,
+        num_peers: 5,
+    }, opts.clone())
+    .await;
+
+    bench_reliable_sender_many(&BenchConfig {
+        name: "ReliableSender send_many: 100k x 64B, 1 peer (with ACK)",
+        num_messages: 100_000,
+        message_size: 64,
+        num_peers: 1,
+    }, opts.clone())
+    .await;
+
+    bench_reliable_sender_many(&BenchConfig {
+        name: "ReliableSender send_many: 100k x 256B, 5 peers (with ACK)",
         num_messages: 100_000,
         message_size: 256,
         num_peers: 5,

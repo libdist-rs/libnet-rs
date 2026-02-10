@@ -1,0 +1,396 @@
+warning: /Users/hermitsage/Github/libnet-rs/Cargo.toml: unused manifest key: workspace.features
+    Finished `release` profile [optimized] target(s) in 0.03s
+     Running `target/release/stress-test`
+
+================================================================
+  libnet-rs Stress Test Suite
+  Options: high_throughput (batch_drain_cap=8192, write_buffer=64KB)
+================================================================
+
+┌─────────────────────────────────────────────────────────────
+│ SimpleSender: 10k x 64B, 1 peer
+├─────────────────────────────────────────────────────────────
+│ Total messages : 10000
+│ Message size   : 64 bytes
+│ Elapsed        : 0.052 s
+│ Throughput     : 191467 msg/s
+│ Bandwidth      : 11.69 MB/s
+│ Avg latency    : 5.2 us/msg
+└─────────────────────────────────────────────────────────────
+
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20000: Error reading messages from peer 127.0.0.1:20000
+┌─────────────────────────────────────────────────────────────
+│ SimpleSender: 5k x 4KB, 1 peer
+├─────────────────────────────────────────────────────────────
+│ Total messages : 5000
+│ Message size   : 4096 bytes
+│ Elapsed        : 0.024 s
+│ Throughput     : 205079 msg/s
+│ Bandwidth      : 801.09 MB/s
+│ Avg latency    : 4.9 us/msg
+└─────────────────────────────────────────────────────────────
+
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20100: Error reading messages from peer 127.0.0.1:20100
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20205: Error reading messages from peer 127.0.0.1:20205
+┌─────────────────────────────────────────────────────────────
+│ SimpleSender: 10k x 256B, 10 peers
+├─────────────────────────────────────────────────────────────
+│ Total messages : 10000
+│ Message size   : 256 bytes
+│ Elapsed        : 0.019 s
+│ Throughput     : 515687 msg/s
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20202: Error reading messages from peer 127.0.0.1:20202
+│ Bandwidth      : 125.90 MB/s
+│ Avg latency    : 1.9 us/msg
+└─────────────────────────────────────────────────────────────
+
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20201: Error reading messages from peer 127.0.0.1:20201
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20204: Connection to peer 127.0.0.1:20204 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20206: Connection to peer 127.0.0.1:20206 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20203: Connection to peer 127.0.0.1:20203 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20208: Connection to peer 127.0.0.1:20208 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20207: Connection to peer 127.0.0.1:20207 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20209: Connection to peer 127.0.0.1:20209 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20200: Connection to peer 127.0.0.1:20200 closed
+┌─────────────────────────────────────────────────────────────
+│ ReliableSender: 5k x 64B, 1 peer (with ACK)
+├─────────────────────────────────────────────────────────────
+│ Total messages : 5000
+│ Message size   : 64 bytes
+│ Elapsed        : 0.033 s
+│ Throughput     : 149992 msg/s
+│ Bandwidth      : 9.15 MB/s
+│ Avg latency    : 6.7 us/msg
+└─────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────────
+│ ReliableSender: 5k x 256B, 5 peers (with ACK)
+├─────────────────────────────────────────────────────────────
+│ Total messages : 5000
+│ Message size   : 256 bytes
+│ Elapsed        : 0.025 s
+│ Throughput     : 198216 msg/s
+│ Bandwidth      : 48.39 MB/s
+│ Avg latency    : 5.0 us/msg
+└─────────────────────────────────────────────────────────────
+
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20502: Error reading messages from peer 127.0.0.1:20502
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20501: Error reading messages from peer 127.0.0.1:20501
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20507: Error reading messages from peer 127.0.0.1:20507
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20506: Error reading messages from peer 127.0.0.1:20506
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20505: Error reading messages from peer 127.0.0.1:20505
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20509: Error reading messages from peer 127.0.0.1:20509
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20503: Error reading messages from peer 127.0.0.1:20503
+  (Broadcast: 10000/10000 delivered)
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20508: Error reading messages from peer 127.0.0.1:20508
+┌─────────────────────────────────────────────────────────────
+│ Broadcast: 1k msgs x 10 peers, 128B
+├─────────────────────────────────────────────────────────────
+│ Total messages : 10000
+│ Message size   : 128 bytes
+│ Elapsed        : 0.018 s
+│ Throughput     : 564523 msg/s
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20500: Error reading messages from peer 127.0.0.1:20500
+│ Bandwidth      : 68.91 MB/s
+│ Avg latency    : 1.8 us/msg
+└─────────────────────────────────────────────────────────────
+
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20504: Connection to peer 127.0.0.1:20504 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20600: Connection to peer 127.0.0.1:20600 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20600: Connection to peer 127.0.0.1:20600 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20600: Connection to peer 127.0.0.1:20600 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20600: Connection to peer 127.0.0.1:20600 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20600: Connection to peer 127.0.0.1:20600 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20600: Connection to peer 127.0.0.1:20600 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20600: Connection to peer 127.0.0.1:20600 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20600: Connection to peer 127.0.0.1:20600 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20600: Connection to peer 127.0.0.1:20600 closed
+[2026-02-10T09:14:52Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20600: Connection to peer 127.0.0.1:20600 closed
+┌─────────────────────────────────────────────────────────────
+│ Many-to-One: 10 senders x 1000 msgs (256B)
+├─────────────────────────────────────────────────────────────
+│ Total messages : 10000
+│ Message size   : 256 bytes
+│ Elapsed        : 0.020 s
+│ Throughput     : 496070 msg/s
+│ Bandwidth      : 121.11 MB/s
+│ Avg latency    : 2.0 us/msg
+└─────────────────────────────────────────────────────────────
+
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+[2026-02-10T09:14:53Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20700: Connection to peer 127.0.0.1:20700 closed
+┌─────────────────────────────────────────────────────────────
+│ Many-to-One: 50 senders x 200 msgs (256B)
+├─────────────────────────────────────────────────────────────
+│ Total messages : 10000
+│ Message size   : 256 bytes
+│ Elapsed        : 0.022 s
+│ Throughput     : 458931 msg/s
+│ Bandwidth      : 112.04 MB/s
+│ Avg latency    : 2.2 us/msg
+└─────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────
+  High-Volume Benchmarks (100k+ messages)
+────────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────────
+[2026-02-10T09:14:54Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20800: Error reading messages from peer 127.0.0.1:20800
+│ SimpleSender: 500k x 64B, 1 peer
+├─────────────────────────────────────────────────────────────
+│ Total messages : 500000
+│ Message size   : 64 bytes
+│ Elapsed        : 1.874 s
+│ Throughput     : 266805 msg/s
+│ Bandwidth      : 16.28 MB/s
+│ Avg latency    : 3.7 us/msg
+└─────────────────────────────────────────────────────────────
+
+[2026-02-10T09:14:55Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20908: Error reading messages from peer 127.0.0.1:20908
+[2026-02-10T09:14:55Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20901: Error reading messages from peer 127.0.0.1:20901
+[2026-02-10T09:14:55Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20906: Error reading messages from peer 127.0.0.1:20906
+[2026-02-10T09:14:55Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20900: Error reading messages from peer 127.0.0.1:20900
+[2026-02-10T09:14:55Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20905: Error reading messages from peer 127.0.0.1:20905
+[2026-02-10T09:14:55Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20907: Error reading messages from peer 127.0.0.1:20907
+[2026-02-10T09:14:55Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20903: Error reading messages from peer 127.0.0.1:20903
+[2026-02-10T09:14:55Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20902: Error reading messages from peer 127.0.0.1:20902
+[2026-02-10T09:14:55Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20904: Error reading messages from peer 127.0.0.1:20904
+┌─────────────────────────────────────────────────────────────
+│ SimpleSender: 500k x 256B, 10 peers
+├─────────────────────────────────────────────────────────────
+│ Total messages : 500000
+│ Message size   : 256 bytes
+│ Elapsed        : 0.630 s
+│ Throughput     : 793617 msg/s
+│ Bandwidth      : 193.75 MB/s
+│ Avg latency    : 1.3 us/msg
+└─────────────────────────────────────────────────────────────
+
+[2026-02-10T09:14:55Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:20909: Error reading messages from peer 127.0.0.1:20909
+┌─────────────────────────────────────────────────────────────
+│ ReliableSender: 100k x 64B, 1 peer (with ACK)
+├─────────────────────────────────────────────────────────────
+│ Total messages : 100000
+│ Message size   : 64 bytes
+│ Elapsed        : 0.651 s
+│ Throughput     : 153500 msg/s
+│ Bandwidth      : 9.37 MB/s
+│ Avg latency    : 6.5 us/msg
+└─────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────────
+│ ReliableSender: 100k x 256B, 5 peers (with ACK)
+├─────────────────────────────────────────────────────────────
+│ Total messages : 100000
+│ Message size   : 256 bytes
+│ Elapsed        : 0.259 s
+│ Throughput     : 385520 msg/s
+│ Bandwidth      : 94.12 MB/s
+│ Avg latency    : 2.6 us/msg
+└─────────────────────────────────────────────────────────────
+
+[2026-02-10T09:14:56Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21209: Error reading messages from peer 127.0.0.1:21209
+[2026-02-10T09:14:56Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21203: Error reading messages from peer 127.0.0.1:21203
+[2026-02-10T09:14:56Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21201: Error reading messages from peer 127.0.0.1:21201
+[2026-02-10T09:14:56Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21200: Error reading messages from peer 127.0.0.1:21200
+[2026-02-10T09:14:56Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21205: Error reading messages from peer 127.0.0.1:21205
+[2026-02-10T09:14:56Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21204: Error reading messages from peer 127.0.0.1:21204
+[2026-02-10T09:14:56Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21207: Error reading messages from peer 127.0.0.1:21207
+[2026-02-10T09:14:56Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21208: Error reading messages from peer 127.0.0.1:21208
+[2026-02-10T09:14:56Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21206: Error reading messages from peer 127.0.0.1:21206
+[2026-02-10T09:14:56Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21202: Error reading messages from peer 127.0.0.1:21202
+  (Broadcast: 100000/100000 delivered)
+┌─────────────────────────────────────────────────────────────
+│ Broadcast: 10k msgs x 10 peers, 128B
+├─────────────────────────────────────────────────────────────
+│ Total messages : 100000
+│ Message size   : 128 bytes
+│ Elapsed        : 0.189 s
+│ Throughput     : 529391 msg/s
+│ Bandwidth      : 64.62 MB/s
+│ Avg latency    : 1.9 us/msg
+└─────────────────────────────────────────────────────────────
+
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21300: Connection to peer 127.0.0.1:21300 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21300: Connection to peer 127.0.0.1:21300 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21300: Connection to peer 127.0.0.1:21300 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21300: Connection to peer 127.0.0.1:21300 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21300: Connection to peer 127.0.0.1:21300 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21300: Connection to peer 127.0.0.1:21300 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21300: Connection to peer 127.0.0.1:21300 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21300: Connection to peer 127.0.0.1:21300 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21300: Connection to peer 127.0.0.1:21300 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21300: Connection to peer 127.0.0.1:21300 closed
+┌─────────────────────────────────────────────────────────────
+│ Many-to-One: 10 senders x 10000 msgs (256B)
+├─────────────────────────────────────────────────────────────
+│ Total messages : 100000
+│ Message size   : 256 bytes
+│ Elapsed        : 0.295 s
+│ Throughput     : 338713 msg/s
+│ Bandwidth      : 82.69 MB/s
+│ Avg latency    : 3.0 us/msg
+└─────────────────────────────────────────────────────────────
+
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+[2026-02-10T09:14:57Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21400: Connection to peer 127.0.0.1:21400 closed
+┌─────────────────────────────────────────────────────────────
+│ Many-to-One: 50 senders x 2000 msgs (256B)
+├─────────────────────────────────────────────────────────────
+│ Total messages : 100000
+│ Message size   : 256 bytes
+│ Elapsed        : 0.639 s
+│ Throughput     : 156511 msg/s
+│ Bandwidth      : 38.21 MB/s
+│ Avg latency    : 6.4 us/msg
+└─────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────
+  Latency Benchmarks (Options::low_latency)
+  batch_drain_cap=256, write_buffer=4KB, SO_SNDBUF=32KB, SO_RCVBUF=32KB
+────────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────────
+│ Latency Distribution (2000 msgs, 64B each)
+├─────────────────────────────────────────────────────────────
+│ Min    :      21.00 us
+│ Avg    :      47.12 us
+│ P50    :      35.79 us
+│ P95    :     113.62 us
+│ P99    :     166.50 us
+│ Max    :     805.88 us
+└─────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────────
+│ Latency Distribution (1000 msgs, 4096B each)
+├─────────────────────────────────────────────────────────────
+│ Min    :      22.83 us
+│ Avg    :      40.34 us
+│ P50    :      36.21 us
+│ P95    :      65.62 us
+│ P99    :      89.25 us
+│ Max    :     278.71 us
+└─────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────────
+│ SimpleSender: 1k x 64KB, 1 peer
+├─────────────────────────────────────────────────────────────
+[2026-02-10T09:14:58Z ERROR tcp_sender::connection] Error in connection to 127.0.0.1:21700: Error reading messages from peer 127.0.0.1:21700
+│ Total messages : 1000
+│ Message size   : 65536 bytes
+│ Elapsed        : 0.016 s
+│ Throughput     : 63006 msg/s
+│ Bandwidth      : 3937.88 MB/s
+│ Avg latency    : 15.9 us/msg
+└─────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────────
+│ ReliableSender: 500 x 64KB, 1 peer (with ACK)
+├─────────────────────────────────────────────────────────────
+│ Total messages : 500
+│ Message size   : 65536 bytes
+│ Elapsed        : 0.009 s
+│ Throughput     : 56838 msg/s
+│ Bandwidth      : 3552.38 MB/s
+│ Avg latency    : 17.6 us/msg
+└─────────────────────────────────────────────────────────────
+
+================================================================
+  Stress Test Complete
+================================================================

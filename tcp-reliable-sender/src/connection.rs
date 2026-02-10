@@ -1,11 +1,11 @@
-use std::{cmp::min, collections::VecDeque, future::poll_fn, net::SocketAddr, pin::Pin, task::Poll, time::Duration};
+use std::{cmp::min, collections::VecDeque, future::poll_fn, io::IoSlice, net::SocketAddr, pin::Pin, task::Poll, time::Duration};
 
-use bytes::Bytes;
+use bytes::{BufMut, Bytes, BytesMut};
 use common::Options;
-use futures::{Sink, Stream};
+use futures::Stream;
 use socket2::SockRef;
-use tokio::{net::TcpStream, sync::{mpsc::UnboundedReceiver, oneshot}, time::sleep};
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+use tokio::{io::AsyncWrite, net::TcpStream, sync::{mpsc::UnboundedReceiver, oneshot}, time::sleep};
+use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 
 use crate::{ConnectionError, InnerMsg, SendError};
 
@@ -47,6 +47,19 @@ impl Waiter {
         self.current = min(2*self.current, self.max_delay);
     }
 }
+
+/// Encode a message as a length-delimited frame: [4-byte BE length][payload].
+#[inline]
+fn encode_frame(payload: &Bytes) -> Bytes {
+    let len = payload.len() as u32;
+    let mut buf = BytesMut::with_capacity(4 + payload.len());
+    buf.put_u32(len);
+    buf.extend_from_slice(payload);
+    buf.freeze()
+}
+
+/// Maximum number of IoSlices to pass to a single writev call.
+const MAX_IOVECS: usize = 64;
 
 impl Connection
 {
@@ -118,72 +131,127 @@ impl Connection
         }
     }
 
-    async fn keep_alive(&mut self, stream: TcpStream) -> ConnectionError {
+    async fn keep_alive(&mut self, mut stream: TcpStream) -> ConnectionError {
         log::debug!("Starting keep_alive for {}", self.address);
         // This buffer keeps all messages and handlers that we have successfully transmitted but for
         // which we are still waiting to receive an ACK.
-        let mut pending_replies: VecDeque<_> = VecDeque::with_capacity(self.options.buffer_capacity);
+        let mut pending_replies: VecDeque<(Bytes, oneshot::Sender<Result<Bytes, SendError>>)> =
+            VecDeque::with_capacity(self.options.buffer_capacity);
 
-        let (rd, wr) = stream.into_split();
+        // Borrow-based split: zero overhead, no Arc, no Mutex
+        let (rd, mut wr) = stream.split();
 
         let mut read_codec = LengthDelimitedCodec::new();
         read_codec.set_max_frame_length(self.options.max_frame_length);
         let mut reader = FramedRead::new(rd, read_codec);
 
-        let mut write_codec = LengthDelimitedCodec::new();
-        write_codec.set_max_frame_length(self.options.max_frame_length);
-        let mut writer = FramedWrite::new(wr, write_codec);
-        writer.set_backpressure_boundary(self.options.write_buffer_size);
-
         let address = self.address;
         let buffer = &mut self.buffer;
         let receiver = &mut self.receiver;
+        let backpressure_boundary = self.options.write_buffer_size;
+        let batch_drain_cap = self.options.batch_drain_cap;
+
+        // Write queue: encoded frames waiting to be written via writev.
+        // Each entry corresponds 1:1 with a message moved to pending_replies.
+        let mut write_queue: VecDeque<Bytes> = VecDeque::with_capacity(128);
+        let mut front_offset: usize = 0;
+        let mut buffered: usize = 0;
 
         let error = poll_fn(|cx| {
             let mut progress = true;
             while progress {
                 progress = false;
 
-                // Phase 1: Flush pending writes
-                match Pin::new(&mut writer).poll_flush(cx) {
-                    Poll::Ready(Ok(())) => {}
-                    Poll::Ready(Err(e)) => {
-                        return Poll::Ready(ConnectionError::SendingFailed(address, e));
-                    }
-                    Poll::Pending => {}
-                }
+                // Phase 1: Flush write queue via writev
+                while !write_queue.is_empty() {
+                    let mut slices_buf: [IoSlice<'_>; MAX_IOVECS] = std::array::from_fn(|_| IoSlice::new(&[]));
+                    let mut n_slices = 0;
 
-                // Phase 2: Drain send buffer (messages awaiting transmission)
-                loop {
-                    let front = buffer.front();
-                    if front.is_none() {
-                        break;
+                    for (i, frame) in write_queue.iter().enumerate() {
+                        if i >= MAX_IOVECS { break; }
+                        let slice = if i == 0 {
+                            &frame[front_offset..]
+                        } else {
+                            &frame[..]
+                        };
+                        if slice.is_empty() { continue; }
+                        slices_buf[n_slices] = IoSlice::new(slice);
+                        n_slices += 1;
                     }
-                    let (_, cancel_handler) = front.unwrap();
-                    if cancel_handler.is_closed() {
-                        buffer.pop_front();
-                        continue;
-                    }
-                    match Pin::new(&mut writer).poll_ready(cx) {
-                        Poll::Ready(Ok(())) => {
-                            let (data, handler) = buffer.pop_front().unwrap();
-                            if let Err(e) = Pin::new(&mut writer).start_send(data.clone()) {
-                                // Put back and report error
-                                buffer.push_front((data, handler));
-                                return Poll::Ready(ConnectionError::SendingFailed(address, e));
-                            }
-                            log::debug!("Message sent to {}", address);
-                            pending_replies.push_back((data, handler));
-                            progress = true;
+
+                    if n_slices == 0 { break; }
+
+                    match Pin::new(&mut wr).poll_write_vectored(cx, &slices_buf[..n_slices]) {
+                        Poll::Ready(Ok(0)) => {
+                            return Poll::Ready(ConnectionError::SendingFailed(
+                                address,
+                                std::io::Error::new(std::io::ErrorKind::WriteZero, "write returned 0"),
+                            ));
                         }
-                        Poll::Pending => break,
+                        Poll::Ready(Ok(n)) => {
+                            progress = true;
+                            buffered -= n;
+
+                            let mut remaining = n;
+                            while remaining > 0 {
+                                let front = &write_queue[0];
+                                let avail = front.len() - front_offset;
+                                if remaining >= avail {
+                                    remaining -= avail;
+                                    write_queue.pop_front();
+                                    front_offset = 0;
+                                } else {
+                                    front_offset += remaining;
+                                    remaining = 0;
+                                }
+                            }
+                        }
                         Poll::Ready(Err(e)) => {
                             return Poll::Ready(ConnectionError::SendingFailed(address, e));
                         }
+                        Poll::Pending => break,
                     }
                 }
 
-                // Phase 3: Receive new messages from channel
+                // Phase 2: Flush kernel buffer when write queue is empty
+                if write_queue.is_empty() && buffered == 0 {
+                    match Pin::new(&mut wr).poll_flush(cx) {
+                        Poll::Ready(Ok(())) => {}
+                        Poll::Ready(Err(e)) => {
+                            return Poll::Ready(ConnectionError::SendingFailed(address, e));
+                        }
+                        Poll::Pending => {}
+                    }
+                }
+
+                // Phase 3: Drain send buffer (messages awaiting transmission) into write queue
+                if buffered < backpressure_boundary {
+                    let mut drained = 0;
+                    loop {
+                        if drained >= batch_drain_cap || buffered >= backpressure_boundary {
+                            break;
+                        }
+                        let front = buffer.front();
+                        if front.is_none() {
+                            break;
+                        }
+                        let (_, cancel_handler) = front.unwrap();
+                        if cancel_handler.is_closed() {
+                            buffer.pop_front();
+                            continue;
+                        }
+                        let (data, handler) = buffer.pop_front().unwrap();
+                        let frame = encode_frame(&data);
+                        buffered += frame.len();
+                        write_queue.push_back(frame);
+                        log::debug!("Message sent to {}", address);
+                        pending_replies.push_back((data, handler));
+                        drained += 1;
+                        progress = true;
+                    }
+                }
+
+                // Phase 4: Receive new messages from channel
                 match receiver.poll_recv(cx) {
                     Poll::Ready(Some(InnerMsg { payload, cancel_handler })) => {
                         log::debug!("Received new message for {}", address);
@@ -193,7 +261,12 @@ impl Connection
                     Poll::Ready(None) => {
                         log::warn!("Receiver channel closed for {}, flushing remaining data", address);
                         // Channel closed — flush remaining data then terminate
-                        return match Pin::new(&mut writer).poll_close(cx) {
+                        if !write_queue.is_empty() {
+                            progress = true;
+                            // Continue loop to flush write queue first
+                            continue;
+                        }
+                        return match Pin::new(&mut wr).poll_shutdown(cx) {
                             Poll::Ready(_) => Poll::Ready(ConnectionError::ChannelClosed(address)),
                             Poll::Pending => Poll::Pending,
                         };
@@ -201,7 +274,7 @@ impl Connection
                     Poll::Pending => {}
                 }
 
-                // Phase 4: Read ACK responses
+                // Phase 5: Read ACK responses
                 match Pin::new(&mut reader).poll_next(cx) {
                     Poll::Ready(Some(Ok(response))) => {
                         progress = true;

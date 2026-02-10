@@ -86,6 +86,7 @@ impl<Id, SendMsg> TcpReliableSender<Id, SendMsg>
 where Id: Debug + Eq + std::hash::Hash + Clone,
 {
     /// Reliably send a message to a specific address.
+    /// Returns a `CancelHandler` that resolves when the receiver acknowledges the message.
     pub async fn send(&mut self, recipient: Id, data: Bytes) -> Result<CancelHandler, OpError<Id>>
     {
         log::debug!("Async Sending {:?} to {:?}", data, recipient);
@@ -110,6 +111,31 @@ where Id: Debug + Eq + std::hash::Hash + Clone,
         }
 
         Ok(rx)
+    }
+
+    /// Send multiple messages to the same recipient, returning all cancel handlers at once.
+    /// Messages are pipelined into the connection without waiting for individual ACKs,
+    /// allowing the caller to await them concurrently for maximum throughput.
+    pub async fn send_many(&mut self, recipient: Id, messages: Vec<Bytes>) -> Result<Vec<CancelHandler>, OpError<Id>>
+    {
+        let addr = match self.address_map.get(&recipient) {
+            Some(addr) => *addr,
+            None => { return Err(OpError::UnknownPeer(recipient)); }
+        };
+        let options = &self.options;
+        let connection = self.connections.entry(recipient.clone())
+            .or_insert_with(|| Self::spawn_connection(addr, options));
+
+        let mut handlers = Vec::with_capacity(messages.len());
+        for data in messages {
+            let (tx, rx) = oneshot::channel();
+            if let Err(e) = connection.send(InnerMsg { payload: data, cancel_handler: tx }) {
+                log::error!("Net Send Error: {}", e);
+                return Err(OpError::SendError(recipient));
+            }
+            handlers.push(rx);
+        }
+        Ok(handlers)
     }
 }
 

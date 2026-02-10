@@ -6,11 +6,20 @@ use std::task::Poll;
 
 use bytes::Bytes;
 use common::Options;
-use futures::{Sink, Stream};
+use futures::Stream;
 use socket2::SockRef;
-use tokio::{net::{TcpListener, TcpStream}, sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender}};
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 
+#[cfg(feature = "ack")]
+use std::collections::VecDeque;
+#[cfg(feature = "ack")]
+use std::io::IoSlice;
+#[cfg(feature = "ack")]
+use tokio::io::AsyncWrite;
+#[cfg(feature = "ack")]
+use bytes::{BufMut, BytesMut};
 #[cfg(feature = "ack")]
 use common::ACK_BYTES;
 
@@ -78,42 +87,103 @@ impl TcpReceiverJob {
 
     fn spawn_runner(socket: TcpStream, peer_address: SocketAddr, tx_connection: UnboundedSender<Bytes>, options: Arc<Options>)
     {
-        let (rd, wr) = socket.into_split();
-
-        let mut codec = LengthDelimitedCodec::new();
-        codec.set_max_frame_length(options.max_frame_length);
-        let mut reader = FramedRead::new(rd, codec);
-
+        // Pre-encode the ACK frame: [4-byte BE length][ACK payload]
         #[cfg(feature = "ack")]
-        let mut writer = {
-            let mut codec = LengthDelimitedCodec::new();
-            codec.set_max_frame_length(options.max_frame_length);
-            let mut w = FramedWrite::new(wr, codec);
-            w.set_backpressure_boundary(options.write_buffer_size);
-            w
+        let ack_frame: Bytes = {
+            let mut buf = BytesMut::with_capacity(4 + ACK_BYTES.len());
+            buf.put_u32(ACK_BYTES.len() as u32);
+            buf.extend_from_slice(ACK_BYTES);
+            buf.freeze()
         };
-        #[cfg(not(feature = "ack"))]
-        let _wr = wr;
-        #[cfg(feature = "ack")]
-        let ack_bytes = Bytes::from_static(ACK_BYTES);
 
         tokio::spawn(async move {
+            let mut socket = socket;
+
+            // Borrow-based split: zero overhead, no Arc, no Mutex
+            let (rd, wr) = socket.split();
+
+            #[cfg(feature = "ack")]
+            let mut wr = wr;
+            #[cfg(not(feature = "ack"))]
+            let _wr = wr;
+
+            let mut read_codec = LengthDelimitedCodec::new();
+            read_codec.set_max_frame_length(options.max_frame_length);
+            let mut reader = FramedRead::new(rd, read_codec);
+
+            #[cfg(feature = "ack")]
+            let mut write_queue: VecDeque<Bytes> = VecDeque::with_capacity(64);
+            #[cfg(feature = "ack")]
+            let mut front_offset: usize = 0;
+
             let result: Result<(), std::io::Error> = poll_fn(|cx| {
                 let mut progress = true;
                 while progress {
                     progress = false;
 
-                    // Phase 1: Flush pending ACK writes
+                    // Phase 1: Flush ACK write queue via writev
                     #[cfg(feature = "ack")]
-                    match Pin::new(&mut writer).poll_flush(cx) {
-                        Poll::Ready(Ok(())) => {}
-                        Poll::Ready(Err(e)) => {
-                            return Poll::Ready(Err(e));
+                    while !write_queue.is_empty() {
+                        let mut slices_buf: [IoSlice<'_>; 64] = std::array::from_fn(|_| IoSlice::new(&[]));
+                        let mut n_slices = 0;
+
+                        for (i, frame) in write_queue.iter().enumerate() {
+                            if i >= 64 { break; }
+                            let slice = if i == 0 {
+                                &frame[front_offset..]
+                            } else {
+                                &frame[..]
+                            };
+                            if slice.is_empty() { continue; }
+                            slices_buf[n_slices] = IoSlice::new(slice);
+                            n_slices += 1;
                         }
-                        Poll::Pending => {}
+
+                        if n_slices == 0 { break; }
+
+                        match Pin::new(&mut wr).poll_write_vectored(cx, &slices_buf[..n_slices]) {
+                            Poll::Ready(Ok(0)) => {
+                                return Poll::Ready(Err(std::io::Error::new(
+                                    std::io::ErrorKind::WriteZero,
+                                    "write returned 0",
+                                )));
+                            }
+                            Poll::Ready(Ok(n)) => {
+                                progress = true;
+                                let mut remaining = n;
+                                while remaining > 0 {
+                                    let front = &write_queue[0];
+                                    let avail = front.len() - front_offset;
+                                    if remaining >= avail {
+                                        remaining -= avail;
+                                        write_queue.pop_front();
+                                        front_offset = 0;
+                                    } else {
+                                        front_offset += remaining;
+                                        remaining = 0;
+                                    }
+                                }
+                            }
+                            Poll::Ready(Err(e)) => {
+                                return Poll::Ready(Err(e));
+                            }
+                            Poll::Pending => break,
+                        }
                     }
 
-                    // Phase 2: Read incoming messages + immediately buffer ACK
+                    // Phase 1b: Flush kernel buffer when write queue is empty
+                    #[cfg(feature = "ack")]
+                    if write_queue.is_empty() {
+                        match Pin::new(&mut wr).poll_flush(cx) {
+                            Poll::Ready(Ok(())) => {}
+                            Poll::Ready(Err(e)) => {
+                                return Poll::Ready(Err(e));
+                            }
+                            Poll::Pending => {}
+                        }
+                    }
+
+                    // Phase 2: Read incoming messages + queue ACK
                     match Pin::new(&mut reader).poll_next(cx) {
                         Poll::Ready(Some(Ok(msg))) => {
                             progress = true;
@@ -123,13 +193,7 @@ impl TcpReceiverJob {
                             }
                             #[cfg(feature = "ack")]
                             {
-                                // Best-effort ACK — if writer not ready, it'll flush next iteration
-                                if Pin::new(&mut writer).poll_ready(cx).is_ready() {
-                                    if let Err(e) = Pin::new(&mut writer).start_send(ack_bytes.clone()) {
-                                        log::error!("Error buffering ACK to peer {}: {}", peer_address, e);
-                                        return Poll::Ready(Err(e));
-                                    }
-                                }
+                                write_queue.push_back(ack_frame.clone());
                             }
                         }
                         Poll::Ready(Some(Err(e))) => {
