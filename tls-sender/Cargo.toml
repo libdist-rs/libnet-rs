@@ -1,0 +1,20 @@
+[package]
+name = "tls-sender"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fnv = "1"
+log = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+common = { version = "0.1.0", path = "../common", features = ["tls"] }
+socket2 = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+
+[dependencies.tokio]
+features = ["net", "sync", "rt", "io-util"]
+version = "1"

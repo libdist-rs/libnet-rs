@@ -1,0 +1,13 @@
+[package]
+name = "udp-sender"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+common = { path = "../common", default-features = false, features = [] }
+bytes = { workspace = true }
+tokio = { version = "1", features = ["net", "sync", "rt"] }
+quinn-udp = { version = "0.5", features = ["fast-apple-datapath"] }
+fnv = "1"
+log = { workspace = true }
+thiserror = { workspace = true }

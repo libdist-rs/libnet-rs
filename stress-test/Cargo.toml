@@ -11,7 +11,14 @@ path = "src/main.rs"
 tcp-sender = { path = "../tcp-sender" }
 tcp-receiver = { path = "../tcp-receiver" }
 tcp-reliable-sender = { path = "../tcp-reliable-sender" }
-common = { path = "../common" }
+udp-sender = { path = "../udp-sender" }
+udp-receiver = { path = "../udp-receiver" }
+udp-reliable-sender = { path = "../udp-reliable-sender" }
+tls-sender = { path = "../tls-sender" }
+tls-receiver = { path = "../tls-receiver" }
+tls-reliable-sender = { path = "../tls-reliable-sender" }
+common = { path = "../common", features = ["tls"] }
+tokio-rustls = { workspace = true }
 
 bytes = { workspace = true }
 futures = { workspace = true }
@@ -23,4 +30,4 @@ env_logger = "0.11"
 
 [dependencies.tokio]
 version = "1"
-features = ["net", "sync", "macros", "rt-multi-thread", "time"]
+features = ["net", "sync", "macros", "rt-multi-thread", "time", "io-util"]

@@ -1,0 +1,17 @@
+[package]
+name = "udp-receiver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+common = { path = "../common" }
+bytes = { workspace = true }
+tokio = { version = "1", features = ["net", "sync", "rt"] }
+quinn-udp = { version = "0.5", features = ["fast-apple-datapath"] }
+futures = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+
+[features]
+default = ["ack"]
+ack = ["common/ack"]
