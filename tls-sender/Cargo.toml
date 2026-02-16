@@ -1,6 +1,6 @@
 [package]
 name = "tls-sender"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -10,7 +10,7 @@ bytes = { workspace = true }
 thiserror = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
-common = { version = "0.1.0", path = "../common", features = ["tls"] }
+common = { version = "0.2.0", path = "../common", features = ["tls"] }
 socket2 = { workspace = true }
 tokio-rustls = { workspace = true }
 rustls = { workspace = true }

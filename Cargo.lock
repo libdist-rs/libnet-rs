@@ -172,7 +172,7 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
 name = "common"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "rcgen",
@@ -688,7 +688,7 @@ dependencies = [
 
 [[package]]
 name = "stress-test"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "common",
@@ -730,7 +730,7 @@ dependencies = [
 
 [[package]]
 name = "tcp-receiver"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "common",
@@ -744,7 +744,7 @@ dependencies = [
 
 [[package]]
 name = "tcp-reliable-sender"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "common",
@@ -759,7 +759,7 @@ dependencies = [
 
 [[package]]
 name = "tcp-sender"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "common",
@@ -813,7 +813,7 @@ checksum = "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
 
 [[package]]
 name = "tls-receiver"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "common",
@@ -829,7 +829,7 @@ dependencies = [
 
 [[package]]
 name = "tls-reliable-sender"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "common",
@@ -846,7 +846,7 @@ dependencies = [
 
 [[package]]
 name = "tls-sender"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "common",
@@ -933,7 +933,7 @@ dependencies = [
 
 [[package]]
 name = "udp-receiver"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "common",
@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "udp-reliable-sender"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "common",
@@ -959,7 +959,7 @@ dependencies = [
 
 [[package]]
 name = "udp-sender"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "common",

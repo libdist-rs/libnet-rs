@@ -1,6 +1,6 @@
 [package]
 name = "tcp-receiver"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -9,7 +9,7 @@ log = { workspace = true }
 futures = { workspace = true }
 tokio-util = { workspace = true }
 thiserror = { workspace = true }
-common = { version = "0.1.0", path = "../common" }
+common = { version = "0.2.0", path = "../common" }
 socket2 = { workspace = true }
 
 [dependencies.tokio]
