@@ -2,15 +2,24 @@ use std::{fmt::Debug, net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 pub use common::Options;
 use fnv::FnvHashMap;
+
+#[cfg(feature = "unbounded")]
+use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
+#[cfg(not(feature = "unbounded"))]
 use tokio::sync::mpsc::{Sender, channel, error::TrySendError};
 
 mod connection;
 use connection::*;
 
+#[cfg(feature = "unbounded")]
+type ChannelSender = UnboundedSender<Bytes>;
+#[cfg(not(feature = "unbounded"))]
+type ChannelSender = Sender<Bytes>;
+
 pub struct TcpSimpleSender<Id, SendMsg>
 {
     address_map: FnvHashMap<Id, SocketAddr>,
-    connections: FnvHashMap<Id, Sender<Bytes>>,
+    connections: FnvHashMap<Id, ChannelSender>,
     options: Arc<Options>,
     _x: std::marker::PhantomData<SendMsg>,
 }
@@ -18,7 +27,7 @@ pub struct TcpSimpleSender<Id, SendMsg>
 #[derive(Debug, thiserror::Error)]
 pub enum TcpSimpleSenderError {
     #[error("Error sending message to peer: {0}")]
-    ConnectionSendError(#[source] tokio::sync::mpsc::error::SendError<Bytes>),
+    ConnectionSendError(String),
 
     #[error("Unknown peer")]
     UnknownPeer,
@@ -63,7 +72,16 @@ impl<Id, SendMsg> TcpSimpleSender<Id, SendMsg>
         }
     }
 
-    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> Sender<Bytes>
+    #[cfg(feature = "unbounded")]
+    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> ChannelSender
+    {
+        let (tx, rx) = unbounded_channel();
+        Connection::spawn(address, rx, (**options).clone());
+        tx
+    }
+
+    #[cfg(not(feature = "unbounded"))]
+    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> ChannelSender
     {
         let (tx, rx) = channel(options.channel_capacity);
         Connection::spawn(address, rx, (**options).clone());
@@ -87,28 +105,41 @@ where Id: Debug + Eq + std::hash::Hash + Clone,
         let conn = self
             .connections
             .entry(sender.clone())
-            // We got lucky since we have already connected to this node
             .or_insert_with(|| Self::spawn_connection(*address, options));
 
-        // Fast path: try_send is synchronous (no yield) when there's capacity
-        match conn.try_send(msg) {
-            Ok(()) => return Ok(()),
-            Err(TrySendError::Full(msg)) => {
-                // Channel full — await backpressure
-                if let Err(e) = conn.send(msg).await {
-                    return Err(TcpSimpleSenderError::ConnectionSendError(e));
-                }
-                return Ok(());
-            }
-            Err(TrySendError::Closed(msg)) => {
-                // Stale connection — remove and retry with a new one
+        #[cfg(feature = "unbounded")]
+        {
+            if let Err(e) = conn.send(msg) {
+                // Channel closed — remove stale connection and retry
                 self.connections.remove(&sender);
                 let conn = Self::spawn_connection(*address, &self.options);
-                if let Err(e) = conn.send(msg).await {
-                    return Err(TcpSimpleSenderError::ConnectionSendError(e));
+                if let Err(e) = conn.send(e.0) {
+                    return Err(TcpSimpleSenderError::ConnectionSendError(e.to_string()));
                 }
                 self.connections.insert(sender, conn);
-                Ok(())
+            }
+            Ok(())
+        }
+        #[cfg(not(feature = "unbounded"))]
+        {
+            match conn.try_send(msg) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Full(msg)) => {
+                    if let Err(e) = conn.send(msg).await {
+                        return Err(TcpSimpleSenderError::ConnectionSendError(e.to_string()));
+                    }
+                    return Ok(());
+                }
+                Err(TrySendError::Closed(msg)) => {
+                    // Stale connection — remove and retry with a new one
+                    self.connections.remove(&sender);
+                    let conn = Self::spawn_connection(*address, &self.options);
+                    if let Err(e) = conn.send(msg).await {
+                        return Err(TcpSimpleSenderError::ConnectionSendError(e.to_string()));
+                    }
+                    self.connections.insert(sender, conn);
+                    Ok(())
+                }
             }
         }
     }

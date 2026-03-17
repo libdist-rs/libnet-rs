@@ -9,13 +9,17 @@ use futures::Stream;
 use socket2::SockRef;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::Receiver;
 use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
+
+#[cfg(feature = "unbounded")]
+type ChannelReceiver = tokio::sync::mpsc::UnboundedReceiver<Bytes>;
+#[cfg(not(feature = "unbounded"))]
+type ChannelReceiver = tokio::sync::mpsc::Receiver<Bytes>;
 
 
 pub(crate) struct Connection {
     address: SocketAddr,
-    receiver: Receiver<Bytes>,
+    receiver: ChannelReceiver,
     options: Options,
 }
 
@@ -38,13 +42,13 @@ pub enum ConnectionError {
 }
 
 impl Connection {
-    fn new(address: SocketAddr, receiver: Receiver<Bytes>, options: Options) -> Self {
+    fn new(address: SocketAddr, receiver: ChannelReceiver, options: Options) -> Self {
         Self { address, receiver, options }
     }
 
     pub(crate) fn spawn(
         address: SocketAddr,
-        rx: Receiver<Bytes>,
+        rx: ChannelReceiver,
         options: Options,
     )
     {

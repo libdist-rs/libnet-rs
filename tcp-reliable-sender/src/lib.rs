@@ -2,7 +2,12 @@ use std::{fmt::Debug, marker::PhantomData, net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 pub use common::Options;
 use fnv::FnvHashMap;
-use tokio::sync::{oneshot, mpsc::{Sender, channel, error::TrySendError}};
+use tokio::sync::oneshot;
+
+#[cfg(feature = "unbounded")]
+use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
+#[cfg(not(feature = "unbounded"))]
+use tokio::sync::mpsc::{Sender, channel, error::TrySendError};
 
 mod connection;
 use connection::*;
@@ -23,10 +28,15 @@ struct InnerMsg
     cancel_handler: oneshot::Sender<Result<Bytes, SendError>>,
 }
 
+#[cfg(feature = "unbounded")]
+type ChannelSender = UnboundedSender<InnerMsg>;
+#[cfg(not(feature = "unbounded"))]
+type ChannelSender = Sender<InnerMsg>;
+
 pub struct TcpReliableSender<Id, SendMsg>
 {
     address_map: FnvHashMap<Id, SocketAddr>,
-    connections: FnvHashMap<Id, Sender<InnerMsg>>,
+    connections: FnvHashMap<Id, ChannelSender>,
     options: Arc<Options>,
     _x: PhantomData<SendMsg>,
 }
@@ -45,7 +55,17 @@ impl<Id, SendMsg> TcpReliableSender<Id, SendMsg>
         }
     }
 
-    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> Sender<InnerMsg>
+    #[cfg(feature = "unbounded")]
+    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> ChannelSender
+    {
+        log::debug!("Spawning a new connection for {}", address);
+        let (tx, rx) = unbounded_channel();
+        Connection::spawn(address, rx, (**options).clone());
+        tx
+    }
+
+    #[cfg(not(feature = "unbounded"))]
+    fn spawn_connection(address: SocketAddr, options: &Arc<Options>) -> ChannelSender
     {
         log::debug!("Spawning a new connection for {}", address);
         let (tx, rx) = channel(options.channel_capacity);
@@ -104,17 +124,28 @@ where Id: Debug + Eq + std::hash::Hash + Clone,
         });
 
         let inner = InnerMsg { payload: data, cancel_handler: tx };
-        match connection.try_send(inner) {
-            Ok(()) => return Ok(rx),
-            Err(TrySendError::Full(inner)) => {
-                if let Err(e) = connection.send(inner).await {
-                    log::error!("Net Send Error: {}", e);
-                    return Err(OpError::SendError(recipient));
-                }
-            }
-            Err(TrySendError::Closed(_)) => {
+
+        #[cfg(feature = "unbounded")]
+        {
+            if let Err(_) = connection.send(inner) {
                 log::error!("Net Send Error: channel closed");
                 return Err(OpError::SendError(recipient));
+            }
+        }
+        #[cfg(not(feature = "unbounded"))]
+        {
+            match connection.try_send(inner) {
+                Ok(()) => return Ok(rx),
+                Err(TrySendError::Full(inner)) => {
+                    if let Err(e) = connection.send(inner).await {
+                        log::error!("Net Send Error: {}", e);
+                        return Err(OpError::SendError(recipient));
+                    }
+                }
+                Err(TrySendError::Closed(_)) => {
+                    log::error!("Net Send Error: channel closed");
+                    return Err(OpError::SendError(recipient));
+                }
             }
         }
 
@@ -138,19 +169,31 @@ where Id: Debug + Eq + std::hash::Hash + Clone,
         for data in messages {
             let (tx, rx) = oneshot::channel();
             let inner = InnerMsg { payload: data, cancel_handler: tx };
-            match connection.try_send(inner) {
-                Ok(()) => {}
-                Err(TrySendError::Full(inner)) => {
-                    if let Err(e) = connection.send(inner).await {
-                        log::error!("Net Send Error: {}", e);
-                        return Err(OpError::SendError(recipient));
-                    }
-                }
-                Err(TrySendError::Closed(_)) => {
+
+            #[cfg(feature = "unbounded")]
+            {
+                if let Err(_) = connection.send(inner) {
                     log::error!("Net Send Error: channel closed");
                     return Err(OpError::SendError(recipient));
                 }
             }
+            #[cfg(not(feature = "unbounded"))]
+            {
+                match connection.try_send(inner) {
+                    Ok(()) => {}
+                    Err(TrySendError::Full(inner)) => {
+                        if let Err(e) = connection.send(inner).await {
+                            log::error!("Net Send Error: {}", e);
+                            return Err(OpError::SendError(recipient));
+                        }
+                    }
+                    Err(TrySendError::Closed(_)) => {
+                        log::error!("Net Send Error: channel closed");
+                        return Err(OpError::SendError(recipient));
+                    }
+                }
+            }
+
             handlers.push(rx);
         }
         Ok(handlers)

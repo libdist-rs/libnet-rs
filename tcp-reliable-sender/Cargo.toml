@@ -19,3 +19,6 @@ features = ["codec"]
 [dependencies.tokio]
 features = ["net", "sync", "macros", "rt", "rt-multi-thread", "time"]
 version = "1"
+
+[features]
+unbounded = []

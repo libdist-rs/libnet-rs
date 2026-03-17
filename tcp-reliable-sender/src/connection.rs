@@ -4,17 +4,25 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use common::Options;
 use futures::Stream;
 use socket2::SockRef;
+#[cfg(feature = "unbounded")]
+use tokio::{io::AsyncWrite, net::TcpStream, sync::{mpsc::UnboundedReceiver, oneshot}, time::sleep};
+#[cfg(not(feature = "unbounded"))]
 use tokio::{io::AsyncWrite, net::TcpStream, sync::{mpsc::Receiver, oneshot}, time::sleep};
 use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 
 use crate::{ConnectionError, InnerMsg, SendError};
+
+#[cfg(feature = "unbounded")]
+type ChannelReceiver = UnboundedReceiver<InnerMsg>;
+#[cfg(not(feature = "unbounded"))]
+type ChannelReceiver = Receiver<InnerMsg>;
 
 pub(crate) struct Connection
 {
     /// The destination address.
     pub(super) address: SocketAddr,
     /// Channel from which the connection receives its commands.
-    pub(super) receiver: Receiver<InnerMsg>,
+    pub(super) receiver: ChannelReceiver,
     /// Configuration options.
     pub(super) options: Options,
     /// Buffer keeping all messages that need to be re-transmitted.
@@ -50,7 +58,7 @@ impl Waiter {
 
 impl Connection
 {
-    pub fn spawn(address: SocketAddr, receiver: Receiver<InnerMsg>, options: Options)
+    pub fn spawn(address: SocketAddr, receiver: ChannelReceiver, options: Options)
     {
         log::debug!("Connection spawning: {}", address);
         let buffer_capacity = options.buffer_capacity;
