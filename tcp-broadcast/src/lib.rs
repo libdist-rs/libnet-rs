@@ -215,20 +215,26 @@ where
 
     /// Send `payload` to every peer in `peers`.  Return once at least
     /// `peers.len() - fault_threshold` peers have handed the message off
-    /// to TCP.  Pending sends to slower peers are cancelled when this
-    /// returns — their cancel flag is set so the worker will skip them
-    /// when it pops them off the queue.
+    /// to TCP.  **Pending sends to slower peers are NOT cancelled** —
+    /// the per-peer worker tasks continue trying to deliver them in the
+    /// background (eventually-delivered semantic).  Combined with the
+    /// `unbounded` feature this gives "send to all, advance on n-t acks,
+    /// let stragglers catch up."
     ///
-    /// Returns the number of confirmed deliveries.  Will be
-    /// `>= peers.len() - fault_threshold` on success, or less if more
-    /// than `fault_threshold` peers failed (unknown peer, full queue,
-    /// or socket write error).
+    /// Returns the number of confirmed deliveries up to the quorum break.
+    /// Will be `>= peers.len() - fault_threshold` on success, or less if
+    /// more than `fault_threshold` peers' send-enqueue itself failed
+    /// (unknown peer, or — in bounded mode only — full queue).
     ///
-    /// CAVEAT: if more than `fault_threshold` peers' workers block
-    /// forever (e.g., peer permanently unreachable AND `unbounded`
-    /// feature off), this future will await indefinitely waiting for
-    /// the (n - t)-th delivery that won't come.  Callers requiring a
-    /// hard upper bound should wrap with `tokio::time::timeout`.
+    /// Callers that want to explicitly cancel pending sends should use
+    /// the lower-level [`Self::send`] method and call [`CancelHandle::cancel`]
+    /// on the handles they want to abort.
+    ///
+    /// CAVEAT: if fewer than `peers.len() - fault_threshold` peers'
+    /// `delivered` oneshots ever fire (e.g., permanently unreachable
+    /// peers in bounded mode), this future will await indefinitely.
+    /// Callers requiring a hard upper bound should wrap with
+    /// `tokio::time::timeout`.
     pub async fn broadcast_with_faults(
         &mut self,
         peers: &[Id],
@@ -237,14 +243,13 @@ where
     ) -> usize {
         use futures::stream::{FuturesUnordered, StreamExt};
 
-        // Phase 1: enqueue to every peer; collect cancel flags + delivery
-        // futures.  Splitting the two halves of CancelHandle lets us await
-        // deliveries while still being able to cancel after early return.
-        let mut cancels: Vec<Arc<AtomicBool>> = Vec::with_capacity(peers.len());
+        // Enqueue to every peer; await `n - t` delivery acks then return.
+        // Pending workers continue in the background — their `delivered`
+        // oneshots are simply dropped when we return (worker writes the
+        // bytes anyway; nobody listens for the ack).
         let mut futs: FuturesUnordered<_> = FuturesUnordered::new();
         for peer in peers {
             if let Some(h) = self.send(peer.clone(), payload.clone()) {
-                cancels.push(Arc::clone(&h.cancel));
                 let delivered = h.delivered;
                 futs.push(async move { delivered.await.is_ok() });
             }
@@ -253,7 +258,6 @@ where
         let needed = peers.len().saturating_sub(fault_threshold);
         let mut ok = 0usize;
 
-        // Phase 2: await deliveries; break at quorum.
         while let Some(success) = futs.next().await {
             if success {
                 ok += 1;
@@ -261,13 +265,6 @@ where
                     break;
                 }
             }
-        }
-
-        // Phase 3: cancel everyone.  Idempotent for already-delivered jobs
-        // (the flag is observed-but-ignored once the worker has written);
-        // skips not-yet-written ones at the worker.
-        for c in &cancels {
-            c.store(true, Ordering::Relaxed);
         }
 
         ok
