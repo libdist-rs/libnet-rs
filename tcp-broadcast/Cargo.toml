@@ -1,0 +1,24 @@
+[package]
+name = "tcp-broadcast"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fnv = "1"
+log = "0"
+futures = { workspace = true }
+bytes = { workspace = true }
+common = { version = "0.2.0", path = "../common" }
+socket2 = { workspace = true }
+
+[dependencies.tokio]
+features = ["net", "sync", "macros", "rt", "rt-multi-thread", "time", "io-util"]
+version = "1"
+
+[features]
+# Switches per-peer worker channels from bounded (default capacity from
+# `Options.channel_capacity`) to unbounded.  Mirrors the same flag on
+# `tcp-sender` / `tcp-reliable-sender`.  Bounded is safer in production
+# (back-pressure); unbounded is preferred for benchmarks where you want
+# the client never to block on slow/dead peers.
+unbounded = []

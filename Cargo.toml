@@ -2,6 +2,7 @@
 members = [
   "tcp-sender",
   "tcp-reliable-sender",
+  "tcp-broadcast",
   "tcp-receiver",
   "udp-sender",
   "udp-reliable-sender",
